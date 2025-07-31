@@ -1,8 +1,7 @@
-
 [build]
-  command = "npm install && npm run build"
-  publish = ".next"  # Deve matchare distDir quando su Netlify
+  command = "npm install --legacy-peer-deps && npm run build"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "18.19.1"
-  NETLIFY = "true"  # Flag cruciale
+  NODE_OPTIONS = "--max_old_space_size=4096"
