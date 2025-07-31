@@ -1,7 +1,6 @@
 "scripts": {
   "build": "next build",
-  "export": "next export",
-  "postbuild": "next-on-netlify"
+  "postbuild": "next-on-netlify"  # Plugin essenziale
 }
   "dependencies": {
     "@supabase/supabase-js": "^2.39.8",
