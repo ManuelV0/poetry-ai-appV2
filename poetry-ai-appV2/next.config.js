@@ -1,17 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-  distDir: 'out',
-  trailingSlash: true,
+  // Rimosso completamente 'output: export'
   images: {
-    unoptimized: true,
-    domains: ['lh3.googleusercontent.com']
+    domains: ['lh3.googleusercontent.com'],
   },
-  // Disabilita tutte le feature sperimentali
+  // Abilita le Server Actions (consigliato)
   experimental: {
-    serverActions: false,
-    optimizePackageImports: []
+    serverActions: true,
   }
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
