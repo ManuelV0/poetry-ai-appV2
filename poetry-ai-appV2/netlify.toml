@@ -1,6 +1,10 @@
 [build]
   command = "npm run build"
-  publish = "SRC/out"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [build.environment]
-  NODE_VERSION = "18.20.8"
+  NODE_VERSION = "18.19.1"
+  NODE_OPTIONS = "--max_old_space_size=4096"
