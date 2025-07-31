@@ -1,32 +1,35 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  output: 'export', // Obbligatorio per Netlify
   distDir: 'out',
-  trailingSlash: true,
+  trailingSlash: true, // Risolve 404 per i link
   images: {
-    unoptimized: true,
-    domains: ['lh3.googleusercontent.com'],
+    unoptimized: true, // Disabilita ottimizzazione immagini
+    domains: ['lh3.googleusercontent.com'], // Per auth providers
   },
   experimental: {
     optimizePackageImports: ['@supabase/supabase-js'],
-    serverComponentsExternalPackages: ['@supabase/supabase-js']
+    serverActions: true, // Se usi Server Components
   },
-  // Solo se hai route dinamiche
+  // Generazione route statiche (adatta al tuo progetto)
   async exportPathMap() {
-    const paths = {
+    const staticPaths = {
       '/': { page: '/' },
-      '/auth/login': { page: '/auth/login' }
+      '/auth/login': { page: '/auth/login' },
+      '/auth/signup': { page: '/auth/signup' },
     };
-    
-    // Aggiungi qui le tue route dinamiche se necessario
-    // Esempio per poems/[id]
+
+    // Esempio per route dinamiche (scommenta se necessario)
     // const { data: poems } = await supabase.from('poems').select('id');
     // poems?.forEach(poem => {
-    //   paths[`/poems/${poem.id}`] = { page: '/poems/[id]', query: { id: poem.id } };
+    //   staticPaths[`/poems/${poem.id}`] = { 
+    //     page: '/poems/[id]', 
+    //     query: { id: poem.id } 
+    //   };
     // });
 
-    return paths;
+    return staticPaths;
   }
 }
 
-module.exports = nextConfig
+module.exports = nextConfig;
