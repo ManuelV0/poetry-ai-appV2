@@ -1,16 +1,16 @@
 [build]
-  command = "npm run build && npm run export"
-  publish = "out"
+  command = "npm install && npm run build"
+  publish = ".next"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
 [context.production.environment]
-  NODE_VERSION = "18"
-  NEXT_TELEMETRY_DISABLED = "1"
+  NODE_VERSION = "18" # Versione obbligatoria
+  NEXT_TELEMETRY_DISABLED = "1" # Disabilita telemetria
 
 [build.environment]
-  NODE_OPTIONS = "--max_old_space_size=4096"
-  OPENAI_API_KEY = "@openai_key"
+  NODE_OPTIONS = "--max_old_space_size=4096" # Aumenta memoria
+  OPENAI_API_KEY = "@openai_key" # Riferimento a variabile d'ambiente
   NEXT_PUBLIC_SUPABASE_URL = "@supabase_url"
   NEXT_PUBLIC_SUPABASE_ANON_KEY = "@supabase_key"
