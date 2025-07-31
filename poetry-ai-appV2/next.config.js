@@ -1,15 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // Modifica cruciale
+  output: 'standalone',
   distDir: '.next',
   trailingSlash: true,
   images: {
-    unoptimized: true
+    unoptimized: true,
+    domains: ['lh3.googleusercontent.com'],
   },
-  // Disabilita TUTTE le feature sperimentali
-  experimental: {
-    serverActions: false,
-    optimizePackageImports: []
+  // Generazione automatica delle route
+  async generateStaticParams() {
+    const { data: poems } = await supabase.from('poems').select('id')
+    return poems?.map(poem => ({ id: poem.id.toString() })) || []
   }
 }
 
