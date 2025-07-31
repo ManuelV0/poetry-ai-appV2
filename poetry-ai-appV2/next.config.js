@@ -1,11 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // Per deploy su Netlify
+  output: 'standalone',
   experimental: {
-    serverActions: true, // Se usi Server Actions
+    serverActions: true,
+    optimizePackageImports: ['@supabase/supabase-js']
   },
   images: {
-    domains: ['lh3.googleusercontent.com'], // Per avatar OAuth
+    domains: ['lh3.googleusercontent.com'],
+    unoptimized: true
+  },
+  webpack: (config) => {
+    config.externals.push('@supabase/supabase-js');
+    return config;
   }
 }
 
