@@ -1,16 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  distDir: '.next',
+  output: 'export', // TORNA a 'export' per Netlify
+  distDir: 'out',
   trailingSlash: true,
   images: {
-    unoptimized: true,
-    domains: ['lh3.googleusercontent.com'],
+    unoptimized: true
   },
-  // Generazione automatica delle route
-  async generateStaticParams() {
-    const { data: poems } = await supabase.from('poems').select('id')
-    return poems?.map(poem => ({ id: poem.id.toString() })) || []
+  // Disabilita TUTTE le feature sperimentali
+  experimental: {
+    serverActions: false,
+    optimizePackageImports: []
   }
 }
 
