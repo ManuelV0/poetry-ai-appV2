@@ -6,7 +6,7 @@
   package = "@netlify/plugin-nextjs"
 
 [context.production.environment]
-  NODE_VERSION = "18" # Versione obbligatoria
+  NODE_VERSION  "18" # Versione obbligatoria
   NEXT_TELEMETRY_DISABLED = "1" # Disabilita telemetria
 
 [build.environment]
