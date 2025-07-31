@@ -1,24 +1,31 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // Obbligatorio per Netlify
-  distDir: '.next',
+  output: 'export',
+  distDir: 'out',
+  trailingSlash: true,
   images: {
-    unoptimized: true, // Disabilita ottimizzazione immagini
-    domains: ['lh3.googleusercontent.com'], // Per avatar OAuth
+    unoptimized: true,
+    domains: ['lh3.googleusercontent.com'],
   },
   experimental: {
-    serverActions: true, // Se usi Server Components
-    optimizePackageImports: [
-      '@supabase/supabase-js',
-      '@radix-ui/react-dropdown-menu'
-    ],
+    optimizePackageImports: ['@supabase/supabase-js'],
     serverComponentsExternalPackages: ['@supabase/supabase-js']
   },
-  // Fix per errori di memoria
-  webpack: (config) => {
-    config.externals = config.externals || [];
-    config.externals.push('@supabase/supabase-js');
-    return config;
+  // Solo se hai route dinamiche
+  async exportPathMap() {
+    const paths = {
+      '/': { page: '/' },
+      '/auth/login': { page: '/auth/login' }
+    };
+    
+    // Aggiungi qui le tue route dinamiche se necessario
+    // Esempio per poems/[id]
+    // const { data: poems } = await supabase.from('poems').select('id');
+    // poems?.forEach(poem => {
+    //   paths[`/poems/${poem.id}`] = { page: '/poems/[id]', query: { id: poem.id } };
+    // });
+
+    return paths;
   }
 }
 
