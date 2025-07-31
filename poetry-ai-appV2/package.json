@@ -1,4 +1,5 @@
-{
+
+  {
   "name": "poetry-ai-app",
   "version": "1.0.0",
   "private": true,
@@ -7,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "next telemetry disable"  # Disabilita telemetria per Netlify
+    "postinstall": "next telemetry disable"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -15,10 +16,10 @@
     "openai": "^4.28.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "shadcn-ui": "latest"  # Sostituisci con i componenti specifici che usi (es: @radix-ui/react-dropdown-menu)
+    "shadcn-ui": "latest"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^4.39.0",  # Plugin ESSENZIALE per Netlify
+    "@netlify/plugin-nextjs": "^4.39.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
@@ -28,7 +29,7 @@
     "typescript": "^5.0.0"
   },
   "engines": {
-    "node": ">=18.0.0",  # Netlify richiede Node 18+
+    "node": ">=18.0.0",
     "npm": ">=9.0.0"
   }
 }
