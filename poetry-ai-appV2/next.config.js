@@ -1,12 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // Per deploy su Netlify
-  experimental: {
-    serverActions: true, // Se usi Server Actions
-  },
+  // Rimosso completamente 'output: export'
   images: {
-    domains: ['lh3.googleusercontent.com'], // Per avatar OAuth
+    domains: ['lh3.googleusercontent.com'],
+  },
+  // Abilita le Server Actions (consigliato)
+  experimental: {
+    serverActions: true,
   }
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
