@@ -7,28 +7,29 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "next telemetry disable"  # Disabilita telemetria per Netlify
+    "postinstall": "next telemetry disable",
+    "debug": "NEXT_DEBUG=1 npm run build"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "next": "^14.1.0",
-    "openai": "^4.28.0",
+    "@supabase/supabase-js": "^2.39.8",
+    "next": "^14.1.4",
+    "openai": "^4.33.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "shadcn-ui": "latest"  # Sostituisci con i componenti specifici che usi (es: @radix-ui/react-dropdown-menu)
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^4.39.0",  # Plugin ESSENZIALE per Netlify
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "autoprefixer": "^10.0.0",
-    "postcss": "^8.0.0",
-    "tailwindcss": "^3.0.0",
-    "typescript": "^5.0.0"
+    "@netlify/plugin-nextjs": "^4.39.5",
+    "@types/node": "^20.11.19",
+    "@types/react": "^18.2.41",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.3.3"
   },
   "engines": {
-    "node": ">=18.0.0",  # Netlify richiede Node 18+
+    "node": ">=18.0.0",
     "npm": ">=9.0.0"
   }
 }
