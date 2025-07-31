@@ -1,5 +1,6 @@
-  "scripts": {
+"scripts": {
   "build": "next build",
+  "export": "next export",
   "postinstall": "next telemetry disable"
 },
 "engines": {
