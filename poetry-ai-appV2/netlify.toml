@@ -1,6 +1,6 @@
 [build]
-  command = "npm run build"
-  publish = ".next"
+  command = "npm run build && npm run export"
+  publish = "out"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -11,3 +11,6 @@
 
 [build.environment]
   NODE_OPTIONS = "--max_old_space_size=4096"
+  OPENAI_API_KEY = "@openai_key"
+  NEXT_PUBLIC_SUPABASE_URL = "@supabase_url"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "@supabase_key"
