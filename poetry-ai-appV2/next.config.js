@@ -13,3 +13,8 @@ const nextConfig = {
   }
 }
 module.exports = nextConfig
+
+async generateStaticParams() {
+  const { data: poems } = await supabase.from('poems').select('id')
+  return poems?.map(poem => ({ id: poem.id.toString() })) || []
+}
