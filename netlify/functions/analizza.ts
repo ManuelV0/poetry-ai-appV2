@@ -21,7 +21,7 @@ const handler: Handler = async (event) => {
     }
   }
 
-  const { poesia, autore = 'Anonimo', title = '' } = JSON.parse(event.body || '{}')
+  const { poesia, author_name = 'Anonimo', title = '' } = JSON.parse(event.body || '{}')
 
   if (!poesia) {
     return {
@@ -97,13 +97,10 @@ ${poesia}
       }
     }
 
-    // 📦 DEBUG: Mostra l’analisi ottenuta
-    console.log('✅ Analisi GPT:', analisi)
-
     // 💾 Inserimento in Supabase
     const inserimento = {
       title,
-      autore,
+      author_name,
       content: poesia,
       analisi_letteraria: analisi.analisi_letteraria,
       analisi_psicologica: analisi.analisi_psicologica,
