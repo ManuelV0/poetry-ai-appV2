@@ -13,7 +13,7 @@ const handler: Handler = async (event) => {
     }
   }
 
-  const { poesia, autore } = JSON.parse(event.body || '{}')
+  const { poesia } = JSON.parse(event.body || '{}')
 
   if (!poesia) {
     return {
