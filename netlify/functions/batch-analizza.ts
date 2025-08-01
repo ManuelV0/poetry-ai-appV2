@@ -19,9 +19,13 @@ const handler: Handler = async (event) => {
     const { data: poesie, error } = await supabase
       .from('poesie')
       .select('id, title, content, analisi_letteraria, analisi_psicologica')
-      .or('analisi_letteraria.is.null,analisi_psicologica.is.null,analisi_letteraria.eq.{},analisi_psicologica.eq.{}')
+      .or(
+        'analisi_letteraria.is.null,analisi_psicologica.is.null,analisi_letteraria.eq.{},analisi_psicologica.eq.{}'
+      )
 
     if (error) throw error
+
+    console.log('Poesie trovate da aggiornare:', poesie?.length || 0)
 
     let count = 0
 
@@ -58,6 +62,7 @@ const handler: Handler = async (event) => {
         console.error('Errore update poesia', poesia.id, updError)
       } else {
         count++
+        console.log('Aggiornata poesia:', poesia.id)
       }
     }
 
