@@ -14,6 +14,8 @@ interface Poesia {
   content: string
   analisi_letteraria: any
   analisi_psicologica: any
+  author_name?: string
+  created_at?: string
 }
 
 // 📦 Componente PoesieList
@@ -29,7 +31,7 @@ export default function PoesieList({
     const fetchPoesie = async () => {
       const { data, error } = await supabase
         .from('poesie')
-        .select('*')
+        .select('id, title, content, analisi_letteraria, analisi_psicologica, author_name, created_at')
         .not('analisi_letteraria', 'is', null)
         .not('analisi_psicologica', 'is', null)
         .order('created_at', { ascending: false })
@@ -58,6 +60,8 @@ export default function PoesieList({
           className="border rounded p-4 shadow cursor-pointer hover:bg-gray-100"
         >
           <h2 className="text-lg font-bold">{poesia.title || 'Senza titolo'}</h2>
+          <p className="text-sm text-gray-600 mb-1">{poesia.author_name || 'Anonimo'}</p>
+          <p className="text-xs text-gray-500 mb-2">{poesia.created_at?.split('T')[0]}</p>
           <p className="line-clamp-3">{poesia.content}</p>
         </div>
       ))}
