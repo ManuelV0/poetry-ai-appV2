@@ -2,11 +2,78 @@
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
-    <title>Poetry AI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poetry AI</title>
+    <link rel="icon" href="/favicon.ico" />
+    <style>
+      :root {
+        --font: "Helvetica Neue", sans-serif;
+        --bg: #fdfaf6;
+        --text: #1a1a1a;
+        --primary: #6a4c93;
+        --secondary: #e0c3fc;
+        --card: #ffffff;
+        --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+
+      #root {
+        width: 100%;
+        max-width: 768px;
+        padding: 2rem;
+        box-sizing: border-box;
+      }
+
+      h1 {
+        text-align: center;
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+        color: var(--primary);
+      }
+
+      button {
+        background: var(--primary);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.25rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      button:hover {
+        background: #5a3b82;
+      }
+
+      textarea {
+        width: 100%;
+        border: 1px solid #ccc;
+        padding: 1rem;
+        border-radius: 6px;
+        resize: vertical;
+      }
+
+      pre {
+        background: #f4f4f4;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+      }
+    </style>
   </head>
+
   <body>
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
