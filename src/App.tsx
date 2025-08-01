@@ -10,8 +10,14 @@ export default function App() {
     const res = await fetch('/.netlify/functions/analizza', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poesia, autore: 'Anonimo' }),
+      body: JSON.stringify({
+        content: poesia,
+        title: 'Senza titolo',
+        author_name: 'Anonimo',
+        user_id: '11111111-1111-1111-1111-111111111111' // UUID GPT o utente fittizio
+      }),
     })
+
     const data = await res.json()
     setRisposta(data)
     setPoesiaSelezionata(null)
