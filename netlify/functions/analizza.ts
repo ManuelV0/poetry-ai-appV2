@@ -2,14 +2,15 @@ import { Handler } from '@netlify/functions'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
+// 🔑 OpenAI setup
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-// 🔐 client Supabase con SERVICE_ROLE_KEY
+// 🔐 Supabase client con Service Role Key (solo lato server!)
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // ⚠️ no VITE_ qui
+  process.env.VITE_SUPABASE_URL!, // ok usare VITE_ qui, viene da Netlify env
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // ⚠️ questa NON deve avere VITE_ nel nome
 )
 
 const handler: Handler = async (event) => {
@@ -29,6 +30,7 @@ const handler: Handler = async (event) => {
     }
   }
 
+  // 🎯 Prompt per OpenAI
   const prompt = `
 Agisci come critico letterario e psicologo. Analizza la poesia seguente e restituisci un JSON compatto ma ispirato con:
 
@@ -55,6 +57,7 @@ ${poesia}
 `.trim()
 
   try {
+    // 🔎 Chiamata a OpenAI
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -72,7 +75,6 @@ ${poesia}
 
     const content = completion.choices[0]?.message?.content || ''
     const jsonStart = content.indexOf('{')
-
     if (jsonStart === -1) {
       return {
         statusCode: 500,
@@ -80,10 +82,9 @@ ${poesia}
       }
     }
 
-    const jsonText = content.slice(jsonStart).trim()
-    const analisi = JSON.parse(jsonText)
+    const analisi = JSON.parse(content.slice(jsonStart).trim())
 
-    // 💾 salva nel DB Supabase
+    // 💾 Inserimento in Supabase
     const { error, data } = await supabase
       .from('poesie')
       .insert([
@@ -106,6 +107,7 @@ ${poesia}
       }
     }
 
+    // ✅ Ritorna i dati inseriti
     return {
       statusCode: 200,
       body: JSON.stringify(data),
