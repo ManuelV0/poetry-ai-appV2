@@ -76,6 +76,7 @@ ${poesia}
     const content = completion.choices[0]?.message?.content || ''
     const jsonStart = content.indexOf('{')
     if (jsonStart === -1) {
+      console.error('❌ Nessun JSON trovato nella risposta GPT')
       return {
         statusCode: 500,
         body: JSON.stringify({ error: 'Risposta non contiene JSON.' }),
@@ -84,35 +85,42 @@ ${poesia}
 
     const analisi = JSON.parse(content.slice(jsonStart).trim())
 
-    // 💾 Inserimento in Supabase
+    // 📦 DEBUG: Mostra l’analisi ottenuta
+    console.log('✅ Analisi GPT:', analisi)
+
+    // 💾 DEBUG: Log dei dati prima dell'inserimento
+    const inserimento = {
+      title,
+      autore,
+      content: poesia,
+      analisi_letteraria: analisi.analisi_letteraria,
+      analisi_psicologica: analisi.analisi_psicologica,
+    }
+    console.log('📤 Inserimento nel DB:', inserimento)
+
     const { error, data } = await supabase
       .from('poesie')
-      .insert([
-        {
-          title,
-          autore,
-          content: poesia,
-          analisi_letteraria: analisi.analisi_letteraria,
-          analisi_psicologica: analisi.analisi_psicologica,
-        },
-      ])
+      .insert([inserimento])
       .select()
       .single()
 
     if (error) {
-      console.error('Errore inserimento Supabase:', error)
+      console.error('❌ Errore inserimento Supabase:', error)
       return {
         statusCode: 500,
         body: JSON.stringify({ error: 'Errore inserimento Supabase', details: error.message }),
       }
     }
 
-    // ✅ Ritorna i dati inseriti
+    // ✅ Successo
+    console.log('✅ Inserimento avvenuto con successo:', data)
+
     return {
       statusCode: 200,
       body: JSON.stringify(data),
     }
   } catch (err: any) {
+    console.error('❌ Errore GPT o altro:', err)
     return {
       statusCode: 500,
       body: JSON.stringify({
