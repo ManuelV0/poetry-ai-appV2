@@ -2,6 +2,9 @@ import { Handler } from '@netlify/functions'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
+// 🔐 Profilo fisso per GPT
+const GPT_PROFILE_ID = '11111111-1111-1111-1111-111111111111'
+
 // 🔑 OpenAI setup
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -9,8 +12,8 @@ const openai = new OpenAI({
 
 // 🔐 Supabase client con Service Role Key (solo lato server!)
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!, // ok usare VITE_ qui, viene da Netlify env
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // ⚠️ questa NON deve avere VITE_ nel nome
+  process.env.VITE_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 const handler: Handler = async (event) => {
@@ -30,7 +33,6 @@ const handler: Handler = async (event) => {
     }
   }
 
-  // 🎯 Prompt per OpenAI
   const prompt = `
 Agisci come critico letterario e psicologo. Analizza la poesia seguente e restituisci un JSON compatto ma ispirato con:
 
@@ -57,18 +59,11 @@ ${poesia}
 `.trim()
 
   try {
-    // 🔎 Chiamata a OpenAI
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        {
-          role: 'system',
-          content: 'Sei un esperto di poesia e psicologia letteraria.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
+        { role: 'system', content: 'Sei un esperto di poesia e psicologia letteraria.' },
+        { role: 'user', content: prompt },
       ],
       temperature: 0.7,
     })
@@ -76,7 +71,6 @@ ${poesia}
     const content = completion.choices[0]?.message?.content || ''
     console.log('🧠 Risposta GPT completa:', content)
 
-    // Estrai il primo JSON ben formato dalla risposta
     const match = content.match(/\{[\s\S]*\}/)
     if (!match) {
       console.error('❌ JSON non trovato nella risposta GPT:', content)
@@ -97,13 +91,13 @@ ${poesia}
       }
     }
 
-    // 💾 Inserimento in Supabase
     const inserimento = {
       title,
       author_name,
       content: poesia,
       analisi_letteraria: analisi.analisi_letteraria,
       analisi_psicologica: analisi.analisi_psicologica,
+      profile_id: GPT_PROFILE_ID, // 👈🏼 chiave fissa per GPT
     }
 
     console.log('📤 Inserimento nel DB:', inserimento)
