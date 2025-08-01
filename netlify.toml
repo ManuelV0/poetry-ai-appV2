@@ -2,9 +2,5 @@
   publish = "dist"
   functions = "netlify/functions"
 
-[functions]
-  runtime = "nodejs20"
-  node_bundler = "esbuild"
-
 [dev]
   autoLaunch = true
