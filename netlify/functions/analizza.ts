@@ -1,9 +1,16 @@
 import { Handler } from '@netlify/functions'
 import OpenAI from 'openai'
+import { createClient } from '@supabase/supabase-js'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+// 🔐 client Supabase con SERVICE_ROLE_KEY
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // ⚠️ no VITE_ qui
+)
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -13,7 +20,7 @@ const handler: Handler = async (event) => {
     }
   }
 
-  const { poesia } = JSON.parse(event.body || '{}')
+  const { poesia, autore = 'Anonimo', title = '' } = JSON.parse(event.body || '{}')
 
   if (!poesia) {
     return {
@@ -74,16 +81,40 @@ ${poesia}
     }
 
     const jsonText = content.slice(jsonStart).trim()
+    const analisi = JSON.parse(jsonText)
+
+    // 💾 salva nel DB Supabase
+    const { error, data } = await supabase
+      .from('poesie')
+      .insert([
+        {
+          title,
+          autore,
+          content: poesia,
+          analisi_letteraria: analisi.analisi_letteraria,
+          analisi_psicologica: analisi.analisi_psicologica,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Errore inserimento Supabase:', error)
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Errore inserimento Supabase', details: error.message }),
+      }
+    }
 
     return {
       statusCode: 200,
-      body: jsonText,
+      body: JSON.stringify(data),
     }
   } catch (err: any) {
     return {
       statusCode: 500,
       body: JSON.stringify({
-        error: 'Errore GPT',
+        error: 'Errore GPT o DB',
         details: err.message || 'Errore sconosciuto',
       }),
     }
