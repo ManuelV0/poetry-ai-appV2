@@ -15,7 +15,7 @@ const handler: Handler = async (event) => {
   }
 
   try {
-    // 1. Recupera tutte le poesie senza analisi completa
+    // 1. Recupera tutte le poesie senza almeno un'analisi
     const { data: poesie, error } = await supabase
       .from('poesie')
       .select('id, title, content')
@@ -26,7 +26,7 @@ const handler: Handler = async (event) => {
     let count = 0
 
     for (const poesia of poesie || []) {
-      // 2. Genera analisi (MOCK: sostituisci con chiamata GPT quando vuoi)
+      // 2. Genera analisi (MOCK: sostituisci con GPT quando vuoi)
       const analisi_letteraria = {
         temi: ['esempio tema'],
         tono: 'esempio tono',
