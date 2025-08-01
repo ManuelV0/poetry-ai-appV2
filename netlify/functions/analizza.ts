@@ -1,11 +1,9 @@
 import { Handler } from '@netlify/functions'
-import { Configuration, OpenAIApi } from 'openai'
+import OpenAI from 'openai'
 
-const config = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
-
-const openai = new OpenAIApi(config)
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -50,7 +48,7 @@ ${poesia}
 `.trim()
 
   try {
-    const completion = await openai.createChatCompletion({
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         {
@@ -65,7 +63,7 @@ ${poesia}
       temperature: 0.7,
     })
 
-    const content = completion.data.choices[0].message?.content || ''
+    const content = completion.choices[0]?.message?.content || ''
     const jsonStart = content.indexOf('{')
 
     if (jsonStart === -1) {
