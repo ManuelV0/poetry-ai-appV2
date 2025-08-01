@@ -125,7 +125,7 @@ const handler: Handler = async (event) => {
     title: body.title || null,
     content: body.content,
     author_name: body.author_name || user.user_metadata?.full_name || null,
-    user_id: user.id,
+    profile_id: user.id, // ✅ COLONNA CORRETTA
     instagram_handle: body.instagram_handle || null,
     analisi_letteraria: body.analisi_letteraria || generateMockAnalysis(body.content).letteraria,
     analisi_psicologica: body.analisi_psicologica || generateMockAnalysis(body.content).psicologica,
