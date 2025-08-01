@@ -15,17 +15,19 @@ const handler: Handler = async (event) => {
   }
 
   try {
-    // 1. Recupera tutte le poesie senza almeno un'analisi
+    // 1. Recupera tutte le poesie senza almeno un'analisi o con analisi vuota
     const { data: poesie, error } = await supabase
       .from('poesie')
-      .select('id, title, content')
-      .or('analisi_letteraria.is.null,analisi_psicologica.is.null')
+      .select('id, title, content, analisi_letteraria, analisi_psicologica')
+      .or('analisi_letteraria.is.null,analisi_psicologica.is.null,analisi_letteraria.eq.{},analisi_psicologica.eq.{}')
 
     if (error) throw error
 
     let count = 0
 
     for (const poesia of poesie || []) {
+      console.log('Aggiorno poesia:', poesia.id)
+
       // 2. Genera analisi (MOCK: sostituisci con GPT quando vuoi)
       const analisi_letteraria = {
         temi: ['esempio tema'],
@@ -52,7 +54,11 @@ const handler: Handler = async (event) => {
         })
         .eq('id', poesia.id)
 
-      if (!updError) count++
+      if (updError) {
+        console.error('Errore update poesia', poesia.id, updError)
+      } else {
+        count++
+      }
     }
 
     return {
