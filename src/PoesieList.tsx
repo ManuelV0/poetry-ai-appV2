@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
+// 🔗 Supabase client (chiavi lato client)
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
   import.meta.env.VITE_SUPABASE_ANON_KEY!
 )
 
+// 📄 Tipo Poesia
 interface Poesia {
   id: number
   title: string
@@ -14,6 +16,7 @@ interface Poesia {
   analisi_psicologica: any
 }
 
+// 📦 Componente PoesieList
 export default function PoesieList({
   onSelect,
 }: {
@@ -31,8 +34,12 @@ export default function PoesieList({
         .not('analisi_psicologica', 'is', null)
         .order('created_at', { ascending: false })
 
-      if (error) console.error(error)
-      else setPoesie(data as Poesia[])
+      if (error) {
+        console.error('❌ Errore nel recupero poesie:', error)
+      } else {
+        setPoesie(data as Poesia[])
+        console.log('✅ Poesie caricate:', data)
+      }
 
       setLoading(false)
     }
