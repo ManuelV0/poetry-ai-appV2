@@ -82,7 +82,6 @@ export default function App() {
     fetchPoesie()
   }, [])
 
-  // Filtra poesie per titolo, autore o contenuto
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -91,7 +90,7 @@ export default function App() {
 
   return (
     <main className="max-w-lg sm:max-w-2xl mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center text-green-700 tracking-wide">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center text-green-700 tracking-wide mx-auto block">
         TheItalianPoetryProject.com
       </h1>
 
