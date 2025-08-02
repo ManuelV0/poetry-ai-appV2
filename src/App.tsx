@@ -1,35 +1,34 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from './lib/supabaseClient' // Assicurati sia il path giusto!
 
-// Componente box per ogni poesia, espandibile
 function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
 
   return (
-    <div className="border rounded p-4 shadow mb-4 bg-white transition-all">
+    <div className="border rounded-lg p-4 shadow mb-5 bg-white transition-all">
       <div
         className="cursor-pointer flex justify-between items-center"
         onClick={() => setAperta(v => !v)}
       >
-        <div>
-          <h2 className="text-lg font-bold">{poesia.title || 'Senza titolo'}</h2>
-          <p className="text-sm text-gray-600">{poesia.author_name || 'Anonimo'}</p>
-          <p className="line-clamp-2 text-gray-800">{poesia.content}</p>
+        <div className="flex-1 pr-3">
+          <h2 className="text-base sm:text-lg font-semibold">{poesia.title || 'Senza titolo'}</h2>
+          <p className="text-xs sm:text-sm text-gray-600">{poesia.author_name || 'Anonimo'}</p>
+          <p className="line-clamp-2 text-gray-800 text-sm sm:text-base mt-1">{poesia.content}</p>
         </div>
-        <span className="text-blue-600 text-xs ml-4">
+        <span className="text-blue-600 text-xs sm:text-sm ml-2 select-none">
           {aperta ? '▲ Chiudi' : '▼ Apri'}
         </span>
       </div>
 
       {aperta && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 text-sm sm:text-base">
           <div>
             <h3 className="font-semibold mb-1">Analisi Letteraria</h3>
             {poesia.analisi_letteraria ? (
               <>
                 <p><strong>Stile letterario:</strong> {poesia.analisi_letteraria.stile_letterario || 'N/A'}</p>
                 <p><strong>Temi:</strong></p>
-                <ul className="list-disc list-inside ml-4">
+                <ul className="list-disc list-inside ml-5">
                   {(poesia.analisi_letteraria.temi || []).map((tema: string, i: number) => (
                     <li key={i}>{tema}</li>
                   ))}
@@ -47,7 +46,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
             {poesia.analisi_psicologica ? (
               <>
                 <p><strong>Emozioni:</strong></p>
-                <ul className="list-disc list-inside ml-4">
+                <ul className="list-disc list-inside ml-5">
                   {(poesia.analisi_psicologica.emozioni || []).map((emozione: string, i: number) => (
                     <li key={i}>{emozione}</li>
                   ))}
@@ -83,14 +82,19 @@ export default function App() {
   }, [])
 
   return (
-    <main className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6 text-center">Vetrina delle poesie analizzate</h1>
-      {loading && <p>Caricamento poesie...</p>}
+    <main className="max-w-lg sm:max-w-2xl mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-center text-green-700 tracking-wide">
+        TheItalianPoetryProject.com
+      </h1>
+
+      {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
+
       {poesie.map(poesia => (
         <PoesiaBox key={poesia.id} poesia={poesia} />
       ))}
-      {(!loading && poesie.length === 0) && (
-        <p className="text-center text-gray-500">Nessuna poesia trovata.</p>
+
+      {!loading && poesie.length === 0 && (
+        <p className="text-center text-gray-400 mt-10">Nessuna poesia trovata.</p>
       )}
     </main>
   )
