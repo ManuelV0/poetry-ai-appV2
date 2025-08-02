@@ -13,7 +13,9 @@ function PoesiaBox({ poesia }: { poesia: any }) {
         <div className="flex-1 pr-3">
           <h2 className="text-base sm:text-lg font-semibold">{poesia.title || 'Senza titolo'}</h2>
           <p className="text-xs sm:text-sm text-gray-600">{poesia.author_name || 'Anonimo'}</p>
-          <p className="line-clamp-2 text-gray-800 text-sm sm:text-base mt-1">{poesia.content}</p>
+          <p className={`text-gray-800 text-sm sm:text-base mt-1 ${aperta ? '' : 'line-clamp-2'}`}>
+            {poesia.content}
+          </p>
         </div>
         <span className="text-blue-600 text-xs sm:text-sm ml-2 select-none">
           {aperta ? '▲ Chiudi' : '▼ Apri'}
