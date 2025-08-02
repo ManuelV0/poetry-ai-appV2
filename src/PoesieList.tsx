@@ -62,18 +62,46 @@ export default function PoesieList({
           <p className="text-sm text-gray-600 mb-1">{poesia.author_name || 'Anonimo'}</p>
           <p className="text-xs text-gray-500 mb-2">{poesia.created_at?.split('T')[0]}</p>
           <p className="line-clamp-3">{poesia.content}</p>
-          {/* Analisi */}
+          {/* Analisi Letteraria */}
           <div className="mt-2 text-xs">
-            <strong>Letteraria:</strong>{" "}
-            {poesia.analisi_letteraria && Object.keys(poesia.analisi_letteraria).length > 0
-              ? JSON.stringify(poesia.analisi_letteraria)
-              : <em>Non ancora analizzata</em>}
+            <strong>Letteraria:</strong>
+            {poesia.analisi_letteraria && Object.keys(poesia.analisi_letteraria).length > 0 ? (
+              <ul className="ml-4 list-disc">
+                <li><strong>Stile:</strong> {poesia.analisi_letteraria.stile_letterario || 'N/A'}</li>
+                <li>
+                  <strong>Temi:</strong>
+                  <ul className="ml-4 list-disc">
+                    {(poesia.analisi_letteraria.temi || []).map((tema: string, i: number) => (
+                      <li key={i}>{tema}</li>
+                    ))}
+                  </ul>
+                </li>
+                <li><strong>Struttura:</strong> {poesia.analisi_letteraria.struttura || 'N/A'}</li>
+                <li><strong>Riferimenti culturali:</strong> {poesia.analisi_letteraria.riferimenti_culturali || 'N/A'}</li>
+              </ul>
+            ) : (
+              <em>Non ancora analizzata</em>
+            )}
           </div>
-          <div className="text-xs">
-            <strong>Psicologica:</strong>{" "}
-            {poesia.analisi_psicologica && Object.keys(poesia.analisi_psicologica).length > 0
-              ? JSON.stringify(poesia.analisi_psicologica)
-              : <em>Non ancora analizzata</em>}
+          {/* Analisi Psicologica */}
+          <div className="mt-2 text-xs">
+            <strong>Psicologica:</strong>
+            {poesia.analisi_psicologica && Object.keys(poesia.analisi_psicologica).length > 0 ? (
+              <ul className="ml-4 list-disc">
+                <li>
+                  <strong>Emozioni:</strong>
+                  <ul className="ml-4 list-disc">
+                    {(poesia.analisi_psicologica.emozioni || []).map((emo: string, i: number) => (
+                      <li key={i}>{emo}</li>
+                    ))}
+                  </ul>
+                </li>
+                <li><strong>Stato interno:</strong> {poesia.analisi_psicologica.stato_interno || 'N/A'}</li>
+                <li><strong>Visione del mondo:</strong> {poesia.analisi_psicologica.visione_del_mondo || 'N/A'}</li>
+              </ul>
+            ) : (
+              <em>Non ancora analizzata</em>
+            )}
           </div>
           {/* Media voto */}
           <div className="mt-2 text-xs text-gray-600">
