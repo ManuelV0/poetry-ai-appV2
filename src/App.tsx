@@ -119,7 +119,17 @@ export default function App() {
 
   const fetchPoesie = async () => {
     try {
-      const res = await fetch('https://djikypgmchywybjxbwar.supabase.co/functions/v1/get-poesie')
+      const res = await fetch('https://djikypgmchywybjxbwar.supabase.co/functions/v1/get-poesie', {
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        }
+      })
+      if (!res.ok) {
+        console.error('Errore API:', res.status)
+        setLoading(false)
+        return
+      }
       const data = await res.json()
       setPoesie(data || [])
     } catch (error) {
