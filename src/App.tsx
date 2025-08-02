@@ -5,7 +5,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
 
   return (
-    <div className="border rounded-lg p-5 shadow mb-6 bg-white transition-all">
+    <div className="w-full border rounded-lg p-5 shadow mb-6 bg-white transition-all">
       {/* Titolo e testo poesia */}
       <div
         className="cursor-pointer flex justify-between items-start"
@@ -73,17 +73,24 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    const fetchPoesie = async () => {
-      const { data, error } = await supabase
-        .from('poesie')
-        .select('id, title, content, author_name, analisi_letteraria, analisi_psicologica, created_at')
-        .order('created_at', { ascending: false })
+  const fetchPoesie = async () => {
+    const { data, error } = await supabase
+      .from('poesie')
+      .select('id, title, content, author_name, analisi_letteraria, analisi_psicologica, created_at')
+      .order('created_at', { ascending: false })
 
-      if (!error) setPoesie(data || [])
-      setLoading(false)
-    }
+    if (!error) setPoesie(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
     fetchPoesie()
+
+    const interval = setInterval(() => {
+      fetchPoesie()
+    }, 10000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const poesieFiltrate = poesie.filter(p =>
@@ -98,7 +105,6 @@ export default function App() {
         TheItalianPoetryProject.com
       </h1>
 
-      {/* Barra di ricerca */}
       <div className="mb-6">
         <input
           type="search"
