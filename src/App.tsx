@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { supabase } from './lib/supabaseClient' // Assicurati sia il path giusto!
+import { supabase } from './lib/supabaseClient'
 
 function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
@@ -67,6 +67,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
 export default function App() {
   const [poesie, setPoesie] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const fetchPoesie = async () => {
@@ -81,20 +82,42 @@ export default function App() {
     fetchPoesie()
   }, [])
 
+  // Filtra poesie per titolo, autore o contenuto
+  const poesieFiltrate = poesie.filter(p =>
+    p.title?.toLowerCase().includes(search.toLowerCase()) ||
+    p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.content?.toLowerCase().includes(search.toLowerCase())
+  )
+
   return (
     <main className="max-w-lg sm:max-w-2xl mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-center text-green-700 tracking-wide">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center text-green-700 tracking-wide">
         TheItalianPoetryProject.com
       </h1>
 
+      {/* Barra di ricerca */}
+      <div className="mb-6">
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Cerca per titolo, autore o testo..."
+          className="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-700"
+          aria-label="Barra di ricerca poesie"
+          autoComplete="off"
+        />
+      </div>
+
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
 
-      {poesie.map(poesia => (
-        <PoesiaBox key={poesia.id} poesia={poesia} />
-      ))}
-
-      {!loading && poesie.length === 0 && (
-        <p className="text-center text-gray-400 mt-10">Nessuna poesia trovata.</p>
+      {poesieFiltrate.length > 0 ? (
+        poesieFiltrate.map(poesia => (
+          <PoesiaBox key={poesia.id} poesia={poesia} />
+        ))
+      ) : (
+        !loading && (
+          <p className="text-center text-gray-400 mt-10">Nessuna poesia trovata.</p>
+        )
       )}
     </main>
   )
