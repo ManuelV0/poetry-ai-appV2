@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { supabase } from './lib/supabaseClient'
 
 function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
@@ -74,12 +73,13 @@ export default function App() {
   const [search, setSearch] = useState('')
 
   const fetchPoesie = async () => {
-    const { data, error } = await supabase
-      .from('poesie')
-      .select('id, title, content, author_name, analisi_letteraria, analisi_psicologica, created_at')
-      .order('created_at', { ascending: false })
-
-    if (!error) setPoesie(data || [])
+    try {
+      const res = await fetch('https://djikypgmchywybjxbwar.supabase.co/functions/v1/get-poesie')
+      const data = await res.json()
+      setPoesie(data || [])
+    } catch (error) {
+      console.error('Errore fetch poesie:', error)
+    }
     setLoading(false)
   }
 
