@@ -1,12 +1,16 @@
 import { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
+import OpenAI from 'openai'
 
+// --- Configurazione Supabase e OpenAI
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
 const handler: Handler = async (event) => {
+  // Consenti solo richieste GET
   if (event.httpMethod !== 'GET') {
     return {
       statusCode: 405,
@@ -15,7 +19,7 @@ const handler: Handler = async (event) => {
   }
 
   try {
-    // 1. Recupera tutte le poesie senza almeno un'analisi o con analisi vuota
+    // 1. Recupera poesie senza analisi o con analisi vuota
     const { data: poesie, error } = await supabase
       .from('poesie')
       .select('id, title, content, analisi_letteraria, analisi_psicologica')
@@ -25,44 +29,75 @@ const handler: Handler = async (event) => {
 
     if (error) throw error
 
-    console.log('Poesie trovate da aggiornare:', poesie?.length || 0)
-
     let count = 0
 
     for (const poesia of poesie || []) {
-      console.log('Aggiorno poesia:', poesia.id)
+      try {
+        // 2. Prompt per analisi AI
+        const prompt = `
+Agisci come critico letterario e psicologo. Analizza la poesia seguente nei seguenti due blocchi:
 
-      // 2. Genera analisi (MOCK: sostituisci con GPT quando vuoi)
-      const analisi_letteraria = {
-        temi: ['esempio tema'],
-        tono: 'esempio tono',
-        stile: 'esempio stile',
-        figure_retoriche: ['esempio figura'],
-        registro_linguistico: 'esempio registro',
-        riferimenti_culturali: 'esempio riferimento',
-      }
-      const analisi_psicologica = {
-        emozioni: ['esempio emozione'],
-        profilo_poetico: 'esempio profilo',
-        descrizione_breve: 'esempio descrizione',
-        visione_del_mondo: 'esempio visione',
-        tratti_di_personalità: 'esempio tratti',
-      }
+1. Analisi Letteraria:
+- Stile
+- Temi
+- Struttura
+- Eventuali riferimenti culturali
 
-      // 3. Aggiorna la poesia esistente nel DB
-      const { error: updError } = await supabase
-        .from('poesie')
-        .update({
-          analisi_letteraria,
-          analisi_psicologica,
+2. Analisi Psicologica:
+- Emozioni
+- Stato interiore del poeta
+- Visione del mondo
+
+Rispondi in JSON come segue:
+
+{
+  "analisi_letteraria": {
+    "stile_letterario": "...",
+    "temi": ["...", "..."],
+    "struttura": "...",
+    "riferimenti_culturali": "..."
+  },
+  "analisi_psicologica": {
+    "emozioni": ["...", "..."],
+    "stato_interno": "...",
+    "visione_del_mondo": "..."
+  }
+}
+
+POESIA:
+${poesia.content}
+`
+        // 3. Chiamata a OpenAI
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7
         })
-        .eq('id', poesia.id)
 
-      if (updError) {
-        console.error('Errore update poesia', poesia.id, updError)
-      } else {
-        count++
-        console.log('Aggiornata poesia:', poesia.id)
+        let analisiGPT
+        try {
+          analisiGPT = JSON.parse(completion.choices[0].message.content || '{}')
+        } catch {
+          analisiGPT = { analisi_letteraria: {}, analisi_psicologica: {} }
+        }
+
+        // 4. Aggiorna la poesia nel DB con le nuove analisi
+        const { error: updError } = await supabase
+          .from('poesie')
+          .update({
+            analisi_letteraria: analisiGPT.analisi_letteraria,
+            analisi_psicologica: analisiGPT.analisi_psicologica,
+          })
+          .eq('id', poesia.id)
+
+        if (!updError) {
+          count++
+          console.log(`✔ Analizzata poesia ${poesia.id}`)
+        } else {
+          console.error(`Errore update poesia ${poesia.id}`, updError)
+        }
+      } catch (err) {
+        console.error('Errore su poesia:', poesia.id, err)
       }
     }
 
@@ -73,7 +108,6 @@ const handler: Handler = async (event) => {
       }),
     }
   } catch (error: any) {
-    console.error('Errore durante analisi batch:', error.message)
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message }),
