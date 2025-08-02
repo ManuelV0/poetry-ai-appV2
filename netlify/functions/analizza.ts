@@ -1,7 +1,8 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai'; // <--- AGGIUNTO
 
-// 1. Configurazione con validazione avanzata
+// Funzione utility per prendere le env
 const getEnvVar = (name: string): string => {
   const value = process.env[name];
   if (!value) {
@@ -13,21 +14,15 @@ const getEnvVar = (name: string): string => {
 
 const supabaseUrl = getEnvVar('SUPABASE_URL');
 const supabaseKey = getEnvVar('SUPABASE_ANON_KEY');
+const openaiKey = getEnvVar('OPENAI_API_KEY'); // <--- AGGIUNTO
 
-// 2. Client Supabase con timeout e retry
 const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false
-  },
-  db: {
-    schema: 'public'
-  },
+  auth: { persistSession: false, autoRefreshToken: false },
+  db: { schema: 'public' },
   global: {
     fetch: async (input, init) => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
-      
       try {
         const response = await fetch(input, {
           ...init,
@@ -42,8 +37,9 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
+const openai = new OpenAI({ apiKey: openaiKey }); // <--- AGGIUNTO
+
 const handler: Handler = async (event) => {
-  // Debug iniziale
   console.log('Avvio handler con event:', {
     method: event.httpMethod,
     path: event.path,
@@ -63,7 +59,6 @@ const handler: Handler = async (event) => {
   // 2. Verifica autenticazione
   const authHeader = event.headers['authorization'] || event.headers['Authorization'];
   const token = authHeader?.split(' ')[1];
-  
   if (!token) {
     console.warn('Richiesta senza token di autorizzazione');
     return {
@@ -88,9 +83,9 @@ const handler: Handler = async (event) => {
     console.error('Fallita verifica token:', error);
     return {
       statusCode: 403,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Accesso non autorizzato',
-        details: error.message 
+        details: error.message
       }),
       headers: { 'Content-Type': 'application/json' }
     };
@@ -120,22 +115,73 @@ const handler: Handler = async (event) => {
     };
   }
 
-  // 6. Preparazione dati
+  // 6. Chiamata GPT per generare analisi
+  let analisiGPT: any = {};
+  try {
+    const prompt = `
+Agisci come critico letterario e psicologo. Analizza la poesia seguente nei seguenti due blocchi:
+1. Analisi Letteraria:
+- Stile
+- Temi
+- Struttura
+- Eventuali riferimenti culturali
+
+2. Analisi Psicologica:
+- Emozioni
+- Stato interiore del poeta
+- Visione del mondo
+
+Rispondi in JSON come segue:
+
+{
+  "analisi_letteraria": {
+    "stile_letterario": "...",
+    "temi": ["...", "..."],
+    "struttura": "...",
+    "riferimenti_culturali": "..."
+  },
+  "analisi_psicologica": {
+    "emozioni": ["...", "..."],
+    "stato_interno": "...",
+    "visione_del_mondo": "..."
+  }
+}
+
+POESIA:
+${body.content}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.7
+    });
+
+    analisiGPT = JSON.parse(completion.choices[0].message.content || '{}');
+  } catch (error) {
+    console.error('❌ Errore chiamata OpenAI o parsing JSON:', error);
+    // Fallback: usa mock
+    analisiGPT = generateMockAnalysis(body.content);
+  }
+
+  // 7. Preparazione dati (priorità a GPT, fallback mock)
   const poemData = {
     title: body.title || null,
     content: body.content,
     author_name: body.author_name || user.user_metadata?.full_name || null,
-    profile_id: user.id, // ✅ COLONNA CORRETTA
+    profile_id: user.id,
     instagram_handle: body.instagram_handle || null,
-    analisi_letteraria: body.analisi_letteraria || generateMockAnalysis(body.content).letteraria,
-    analisi_psicologica: body.analisi_psicologica || generateMockAnalysis(body.content).psicologica,
+    analisi_letteraria: analisiGPT.analisi_letteraria || generateMockAnalysis(body.content).letteraria,
+    analisi_psicologica: analisiGPT.analisi_psicologica || generateMockAnalysis(body.content).psicologica,
     match_id: body.match_id || null,
     created_at: new Date().toISOString()
   };
 
   console.log('Dati preparati per inserimento:', poemData);
 
-  // 7. Inserimento nel database
+  // 8. Inserimento nel database
   try {
     console.log('Avvio inserimento in Supabase...');
     const { data, error } = await supabase
@@ -157,7 +203,7 @@ const handler: Handler = async (event) => {
     return {
       statusCode: 201,
       body: JSON.stringify(data[0]),
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store'
       }
@@ -169,7 +215,7 @@ const handler: Handler = async (event) => {
     });
     return {
       statusCode: 500,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Errore interno del server',
         request_id: event.headers['x-request-id'] || null
       }),
