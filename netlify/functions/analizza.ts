@@ -1,54 +1,30 @@
+
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai'; // <--- AGGIUNTO
+import OpenAI from 'openai'; // <--- ASSICURATI: openai pacchetto installato
 
-// Funzione utility per prendere le env
+// --- Utility per ENV
 const getEnvVar = (name: string): string => {
   const value = process.env[name];
-  if (!value) {
-    console.error(`❌ Variabile d'ambiente mancante: ${name}`);
-    throw new Error(`Configurazione richiesta: ${name}`);
-  }
+  if (!value) throw new Error(`Variabile d'ambiente mancante: ${name}`);
   return value;
 };
 
 const supabaseUrl = getEnvVar('SUPABASE_URL');
-const supabaseKey = getEnvVar('SUPABASE_ANON_KEY');
-const openaiKey = getEnvVar('OPENAI_API_KEY'); // <--- AGGIUNTO
+const supabaseKey = getEnvVar('SUPABASE_ANON_KEY');  // Usa Service Role se hai bisogno di poteri elevati!
+const openaiKey = getEnvVar('OPENAI_API_KEY');
 
+// --- Supabase client
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false, autoRefreshToken: false },
-  db: { schema: 'public' },
-  global: {
-    fetch: async (input, init) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-      try {
-        const response = await fetch(input, {
-          ...init,
-          signal: controller.signal
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response;
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-  }
+  db: { schema: 'public' }
 });
 
-const openai = new OpenAI({ apiKey: openaiKey }); // <--- AGGIUNTO
+const openai = new OpenAI({ apiKey: openaiKey });
 
 const handler: Handler = async (event) => {
-  console.log('Avvio handler con event:', {
-    method: event.httpMethod,
-    path: event.path,
-    query: event.queryStringParameters
-  });
-
-  // 1. Validazione metodo HTTP
+  // --- Solo POST
   if (event.httpMethod !== 'POST') {
-    console.warn(`Metodo ${event.httpMethod} non consentito`);
     return {
       statusCode: 405,
       body: JSON.stringify({ error: 'Solo POST consentito' }),
@@ -56,11 +32,10 @@ const handler: Handler = async (event) => {
     };
   }
 
-  // 2. Verifica autenticazione
+  // --- Auth: JWT obbligatorio
   const authHeader = event.headers['authorization'] || event.headers['Authorization'];
   const token = authHeader?.split(' ')[1];
   if (!token) {
-    console.warn('Richiesta senza token di autorizzazione');
     return {
       statusCode: 401,
       body: JSON.stringify({ error: 'Token JWT mancante' }),
@@ -68,36 +43,25 @@ const handler: Handler = async (event) => {
     };
   }
 
-  // 3. Verifica token
+  // --- Verifica token
   let user;
   try {
-    console.log('Verifica token JWT...');
     const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) {
-      console.error('Errore verifica token:', error);
-      throw error || new Error('Utente non trovato');
-    }
+    if (error || !data.user) throw error || new Error('Utente non trovato');
     user = data.user;
-    console.log(`Utente verificato: ${user.email} (${user.id})`);
-  } catch (error) {
-    console.error('Fallita verifica token:', error);
+  } catch (error: any) {
     return {
       statusCode: 403,
-      body: JSON.stringify({
-        error: 'Accesso non autorizzato',
-        details: error.message
-      }),
+      body: JSON.stringify({ error: 'Accesso non autorizzato', details: error.message }),
       headers: { 'Content-Type': 'application/json' }
     };
   }
 
-  // 4. Parsing corpo
+  // --- Parsing body
   let body: any;
   try {
     body = JSON.parse(event.body || '{}');
-    console.log('Body ricevuto:', body);
   } catch (e) {
-    console.error('Errore parsing JSON:', e);
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'Formato JSON non valido' }),
@@ -105,9 +69,7 @@ const handler: Handler = async (event) => {
     };
   }
 
-  // 5. Validazione input
   if (!body.content || typeof body.content !== 'string') {
-    console.warn('Content mancante o non valido');
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'Il campo "content" è obbligatorio' }),
@@ -115,11 +77,12 @@ const handler: Handler = async (event) => {
     };
   }
 
-  // 6. Chiamata GPT per generare analisi
+  // --- Analisi GPT
   let analisiGPT: any = {};
   try {
     const prompt = `
 Agisci come critico letterario e psicologo. Analizza la poesia seguente nei seguenti due blocchi:
+
 1. Analisi Letteraria:
 - Stile
 - Temi
@@ -153,20 +116,16 @@ ${body.content}
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        { role: "user", content: prompt }
-      ],
+      messages: [{ role: "user", content: prompt }],
       temperature: 0.7
     });
-
     analisiGPT = JSON.parse(completion.choices[0].message.content || '{}');
   } catch (error) {
-    console.error('❌ Errore chiamata OpenAI o parsing JSON:', error);
-    // Fallback: usa mock
+    // In caso di errore OpenAI: fallback mock
     analisiGPT = generateMockAnalysis(body.content);
   }
 
-  // 7. Preparazione dati (priorità a GPT, fallback mock)
+  // --- Prepara dati per Supabase
   const poemData = {
     title: body.title || null,
     content: body.content,
@@ -179,27 +138,13 @@ ${body.content}
     created_at: new Date().toISOString()
   };
 
-  console.log('Dati preparati per inserimento:', poemData);
-
-  // 8. Inserimento nel database
+  // --- Inserimento in DB
   try {
-    console.log('Avvio inserimento in Supabase...');
     const { data, error } = await supabase
       .from('poesie')
       .insert(poemData)
       .select('*');
-
-    if (error) {
-      console.error('Errore Supabase:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
-
-    console.log('Inserimento riuscito:', data[0]);
+    if (error) throw error;
     return {
       statusCode: 201,
       body: JSON.stringify(data[0]),
@@ -208,46 +153,25 @@ ${body.content}
         'Cache-Control': 'no-store'
       }
     };
-  } catch (error) {
-    console.error('Errore durante l\'inserimento:', {
-      message: error.message,
-      stack: error.stack
-    });
+  } catch (error: any) {
     return {
       statusCode: 500,
       body: JSON.stringify({
         error: 'Errore interno del server',
-        request_id: event.headers['x-request-id'] || null
+        details: error.message
       }),
       headers: { 'Content-Type': 'application/json' }
     };
   }
 };
 
-// Tipizzazione e mock
-interface PoetryAnalysis {
-  letteraria: {
-    temi: string[];
-    tono: string;
-    stile: string;
-    metafore?: string[];
-  };
-  psicologica: {
-    emozioni: string[];
-    tratti: string[];
-    valutazione?: number;
-  };
-}
-
-function generateMockAnalysis(content: string): PoetryAnalysis {
-  const lengthType = content.length > 100 ? 'lunga' : 'breve';
-  const complexity = content.split(' ').length > 50 ? 'complessa' : 'semplice';
-
+// --- Mock fallback
+function generateMockAnalysis(content: string) {
   return {
     letteraria: {
       temi: ['natura', 'amore'],
-      tono: lengthType === 'lunga' ? 'profondo' : 'leggero',
-      stile: complexity === 'complessa' ? 'ricercato' : 'direct',
+      tono: content.length > 100 ? 'profondo' : 'leggero',
+      stile: content.split(' ').length > 50 ? 'ricercato' : 'direct',
       metafore: ['il mare come vita']
     },
     psicologica: {
