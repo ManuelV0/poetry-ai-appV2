@@ -7,7 +7,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY!
 )
 
-// 📄 Tipo Poesia
+// 📄 Tipo Poesia (aggiornato con voti)
 interface Poesia {
   id: number
   title: string
@@ -16,6 +16,8 @@ interface Poesia {
   analisi_psicologica: any
   author_name?: string
   created_at?: string
+  media_voti?: number | null
+  totale_voti?: number | null
 }
 
 // 📦 Componente PoesieList
@@ -29,12 +31,9 @@ export default function PoesieList({
 
   useEffect(() => {
     const fetchPoesie = async () => {
+      // Ora usa la funzione RPC per avere anche i voti!
       const { data, error } = await supabase
-        .from('poesie')
-        .select('id, title, content, analisi_letteraria, analisi_psicologica, author_name, created_at')
-        .not('analisi_letteraria', 'is', null)
-        .not('analisi_psicologica', 'is', null)
-        .order('created_at', { ascending: false })
+        .rpc('get_poems_with_votes')
 
       if (error) {
         console.error('❌ Errore nel recupero poesie:', error)
@@ -63,6 +62,25 @@ export default function PoesieList({
           <p className="text-sm text-gray-600 mb-1">{poesia.author_name || 'Anonimo'}</p>
           <p className="text-xs text-gray-500 mb-2">{poesia.created_at?.split('T')[0]}</p>
           <p className="line-clamp-3">{poesia.content}</p>
+          {/* Analisi */}
+          <div className="mt-2 text-xs">
+            <strong>Letteraria:</strong>{" "}
+            {poesia.analisi_letteraria && Object.keys(poesia.analisi_letteraria).length > 0
+              ? JSON.stringify(poesia.analisi_letteraria)
+              : <em>Non ancora analizzata</em>}
+          </div>
+          <div className="text-xs">
+            <strong>Psicologica:</strong>{" "}
+            {poesia.analisi_psicologica && Object.keys(poesia.analisi_psicologica).length > 0
+              ? JSON.stringify(poesia.analisi_psicologica)
+              : <em>Non ancora analizzata</em>}
+          </div>
+          {/* Media voto */}
+          <div className="mt-2 text-xs text-gray-600">
+            ⭐ Media voto: {poesia.media_voti !== null && poesia.media_voti !== undefined ? poesia.media_voti.toFixed(2) : '—'}
+            <br />
+            🗳️ Voti totali: {poesia.totale_voti || 0}
+          </div>
         </div>
       ))}
     </div>
