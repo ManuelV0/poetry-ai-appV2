@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from './lib/supabaseClient' // Assicurati sia il path giusto!
 
-// Un piccolo componente per ogni poesia (box espandibile)
+// Componente box per ogni poesia, espandibile
 function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
 
@@ -20,16 +20,45 @@ function PoesiaBox({ poesia }: { poesia: any }) {
           {aperta ? '▲ Chiudi' : '▼ Apri'}
         </span>
       </div>
+
       {aperta && (
-        <div className="mt-4">
-          <h3 className="font-semibold mb-1">Analisi Letteraria</h3>
-          <pre className="bg-gray-100 p-2 rounded text-xs whitespace-pre-wrap mb-2">
-            {JSON.stringify(poesia.analisi_letteraria, null, 2)}
-          </pre>
-          <h3 className="font-semibold mb-1">Analisi Psicologica</h3>
-          <pre className="bg-gray-100 p-2 rounded text-xs whitespace-pre-wrap">
-            {JSON.stringify(poesia.analisi_psicologica, null, 2)}
-          </pre>
+        <div className="mt-4 space-y-4">
+          <div>
+            <h3 className="font-semibold mb-1">Analisi Letteraria</h3>
+            {poesia.analisi_letteraria ? (
+              <>
+                <p><strong>Stile letterario:</strong> {poesia.analisi_letteraria.stile_letterario || 'N/A'}</p>
+                <p><strong>Temi:</strong></p>
+                <ul className="list-disc list-inside ml-4">
+                  {(poesia.analisi_letteraria.temi || []).map((tema: string, i: number) => (
+                    <li key={i}>{tema}</li>
+                  ))}
+                </ul>
+                <p><strong>Struttura:</strong> {poesia.analisi_letteraria.struttura || 'N/A'}</p>
+                <p><strong>Riferimenti culturali:</strong> {poesia.analisi_letteraria.riferimenti_culturali || 'N/A'}</p>
+              </>
+            ) : (
+              <p className="italic text-gray-500">Nessuna analisi letteraria disponibile.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-1">Analisi Psicologica</h3>
+            {poesia.analisi_psicologica ? (
+              <>
+                <p><strong>Emozioni:</strong></p>
+                <ul className="list-disc list-inside ml-4">
+                  {(poesia.analisi_psicologica.emozioni || []).map((emozione: string, i: number) => (
+                    <li key={i}>{emozione}</li>
+                  ))}
+                </ul>
+                <p><strong>Stato interno:</strong> {poesia.analisi_psicologica.stato_interno || 'N/A'}</p>
+                <p><strong>Visione del mondo:</strong> {poesia.analisi_psicologica.visione_del_mondo || 'N/A'}</p>
+              </>
+            ) : (
+              <p className="italic text-gray-500">Nessuna analisi psicologica disponibile.</p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -46,6 +75,7 @@ export default function App() {
         .from('poesie')
         .select('id, title, content, author_name, analisi_letteraria, analisi_psicologica, created_at')
         .order('created_at', { ascending: false })
+
       if (!error) setPoesie(data || [])
       setLoading(false)
     }
