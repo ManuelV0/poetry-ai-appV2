@@ -5,6 +5,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
   const [poesiaData, setPoesiaData] = useState(poesia)
   const [loadingAudio, setLoadingAudio] = useState(false)
+  const [audioUrl, setAudioUrl] = useState<string | null>(poesia.audio_url || null)
 
   // Parse analisi se arriva come stringa
   let analisiL = poesiaData.analisi_letteraria
@@ -19,16 +20,19 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   const handleGeneraAudio = async (e: React.MouseEvent) => {
     e.stopPropagation()
     setLoadingAudio(true)
-    // Chiamata all'API/Function Netlify (da implementare)
     try {
       const res = await fetch('/api/genera-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poesia_id: poesiaData.id })
+        body: JSON.stringify({ poesia_id: poesiaData.id, text: poesiaData.content })
       })
       const json = await res.json()
+      // Sostieni sia audio_url (file statico) che audioUrl (data url base64)
       if (json.audio_url) {
+        setAudioUrl(json.audio_url)
         setPoesiaData((prev: any) => ({ ...prev, audio_url: json.audio_url }))
+      } else if (json.audioUrl) {
+        setAudioUrl(json.audioUrl)
       }
     } catch (err) {
       alert('Errore nella generazione audio.')
@@ -63,9 +67,9 @@ function PoesiaBox({ poesia }: { poesia: any }) {
       {/* Player audio o bottone genera */}
       {aperta && (
         <div className="mt-6">
-          {poesiaData.audio_url ? (
+          {audioUrl ? (
             <audio controls className="my-2 w-full">
-              <source src={poesiaData.audio_url} type="audio/mpeg" />
+              <source src={audioUrl} type="audio/mpeg" />
               Il tuo browser non supporta l'audio.
             </audio>
           ) : (
