@@ -46,7 +46,7 @@ exports.handler = async function(event, context) {
         },
         body: JSON.stringify({
           text: text,
-          model_id: 'eleven_monolingual_v2',
+          model_id: 'eleven_multilingual_v2',   // <-- Questa è la versione migliore!
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75
