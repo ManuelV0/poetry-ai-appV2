@@ -24,7 +24,10 @@ function PoesiaBox({ poesia }: { poesia: any }) {
       const res = await fetch('/.netlify/functions/genera-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: poesiaData.content })  // Invio solo il testo!
+        body: JSON.stringify({ 
+          text: poesiaData.content, 
+          poesia_id: poesiaData.id        // <-- Passa anche l'id!
+        })
       })
       const json = await res.json()
       if (json.audio_url) {
