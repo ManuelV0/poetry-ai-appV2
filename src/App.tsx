@@ -16,18 +16,17 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   } catch {}
   const tonoEmotivo = analisiP?.tono_emotivo || ''
 
-  // Handler per generare l'audio
+  // Handler per generare l'audio (Netlify Functions)
   const handleGeneraAudio = async (e: React.MouseEvent) => {
     e.stopPropagation()
     setLoadingAudio(true)
     try {
-      const res = await fetch('/api/genera-audio', {
+      const res = await fetch('/.netlify/functions/genera-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poesia_id: poesiaData.id, text: poesiaData.content })
+        body: JSON.stringify({ text: poesiaData.content })  // Invio solo il testo!
       })
       const json = await res.json()
-      // Sostieni sia audio_url (file statico) che audioUrl (data url base64)
       if (json.audio_url) {
         setAudioUrl(json.audio_url)
         setPoesiaData((prev: any) => ({ ...prev, audio_url: json.audio_url }))
