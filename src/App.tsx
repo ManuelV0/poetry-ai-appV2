@@ -21,18 +21,29 @@ function PoesiaBox({ poesia }: { poesia: any }) {
     e.stopPropagation()
     setLoadingAudio(true)
     try {
+      // NON rigenerare se già presente
+      if (audioUrl) {
+        setLoadingAudio(false)
+        return
+      }
       const res = await fetch('/.netlify/functions/genera-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: poesiaData.content, 
-          poesia_id: poesiaData.id        // <-- Passa anche l'id!
+        body: JSON.stringify({
+          text: poesiaData.content,
+          poesia_id: poesiaData.id
         })
       })
       const json = await res.json()
+      // Supporto sia audio_url (url fisico) che audioUrl (base64)
       if (json.audio_url) {
         setAudioUrl(json.audio_url)
         setPoesiaData((prev: any) => ({ ...prev, audio_url: json.audio_url }))
+        // Aggiorna anche in Supabase frontend (opzionale, per UX reattiva)
+        await supabase
+          .from('poesie')
+          .update({ audio_url: json.audio_url, audio_generated: true })
+          .eq('id', poesiaData.id)
       } else if (json.audioUrl) {
         setAudioUrl(json.audioUrl)
       }
