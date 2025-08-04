@@ -1,9 +1,9 @@
 // netlify/functions/genera-audio.js
 
 const { createClient } = require('@supabase/supabase-js');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// --- CONFIGURAZIONE SUPABASE ---
+// --- CONFIGURAZIONE SUPABASE (SERVICE KEY necessaria!) ---
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
@@ -18,9 +18,9 @@ exports.handler = async function(event, context) {
     };
   }
 
-  // Leggi il body come JSON
+  // Parsing del body JSON
   const { text, poesia_id } = JSON.parse(event.body || '{}');
-  if (!text || text.trim() === '' || !poesia_id) {
+  if (!text || !poesia_id) {
     return {
       statusCode: 400,
       headers: { 'Content-Type': 'application/json' },
@@ -31,7 +31,6 @@ exports.handler = async function(event, context) {
   const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
   const VOICE_ID = 'uScy1bXtKz8vPzfdFsFw'; // Voce italiana maschile ElevenLabs
 
-  // Check per sicurezza
   if (!ELEVENLABS_API_KEY) {
     console.error('❌ API key ElevenLabs mancante');
     return {
@@ -42,7 +41,7 @@ exports.handler = async function(event, context) {
   }
 
   try {
-    // 1. Richiesta a ElevenLabs
+    // 1. Richiesta TTS a ElevenLabs
     const ttsResponse = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
       {
@@ -61,6 +60,7 @@ exports.handler = async function(event, context) {
         })
       }
     );
+
     if (!ttsResponse.ok) {
       const errorText = await ttsResponse.text();
       console.error('❌ Errore ElevenLabs:', errorText);
@@ -70,14 +70,16 @@ exports.handler = async function(event, context) {
         body: JSON.stringify({ error: 'Errore dal servizio vocale', details: errorText }),
       };
     }
+
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
 
-    // 2. Carica audio su Supabase Storage
+    // 2. Carica su Supabase Storage
     const fileName = `poesia-${poesia_id}-${Date.now()}.mp3`;
     const { error: uploadError } = await supabase
       .storage
       .from('poetry-audio')
       .upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
+
     if (uploadError) {
       console.error('❌ Errore upload Supabase:', uploadError.message);
       return {
@@ -96,11 +98,12 @@ exports.handler = async function(event, context) {
     // 4. Aggiorna la tabella poesie
     const { error: updateError } = await supabase
       .from('poesie')
-      .update({ audio_url: publicURL })
+      .update({ audio_url: publicURL, audio_generated: true })
       .eq('id', poesia_id);
+
     if (updateError) {
       console.error('❌ Errore update DB:', updateError.message);
-      // (opzionale: continua anche se update fallisce)
+      // (Opzionale: puoi decidere di fermare qui oppure continuare)
     }
 
     return {
