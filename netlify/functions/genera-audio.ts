@@ -21,7 +21,7 @@ exports.handler = async function(event, context) {
   }
 
   const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-  const VOICE_ID = 'UlwxMDtxqMDYmG6pk2q6'; // Voce italiana ElevenLabs
+  const VOICE_ID = 'lwGnQIn0Z9pl1SoUiXZ3'; // Nuova voce italiana ElevenLabs
 
   // Check per sicurezza
   if (!ELEVENLABS_API_KEY) {
