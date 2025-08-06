@@ -18,7 +18,6 @@ const supabase = createClient(
 const ALLOWED_ORIGINS = [
   'https://poetry.theitalianpoetryproject.com',
   'https://widget.theitalianpoetryproject.com',
-  'https://widget.theitalianpoetryproject.com/my-poetry-app.iife.js',
   'https://www.theitalianpoetryproject.com'
 ];
 
