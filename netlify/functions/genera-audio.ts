@@ -3,26 +3,42 @@
 const { createClient } = require('@supabase/supabase-js');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// CONFIGURAZIONE (personalizza qui)
+// --- CONFIGURAZIONE ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const VOICE_ID = 'uScy1bXtKz8vPzfdFsFw';
-
-// SOLO LA TUA WEBAPP PUÒ CHIAMARE
-const ALLOWED_ORIGIN = 'https://poetry.theitalianpoetryproject.com';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400'
-};
+const VOICE_ID = 'uScy1bXtKz8vPzfdFsFw'; // Voce italiana ElevenLabs
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// Domini autorizzati
+const ALLOWED_ORIGINS = [
+  'https://poetry.theitalianpoetryproject.com',
+  'https://www.theitalianpoetryproject.com',
+  'https://widget.theitalianpoetryproject.com',
+  'http://localhost:5173',
+  'http://localhost:8888'
+];
+
+// Funzione per generare header CORS dinamici
+function getCorsHeaders(origin) {
+  const headers = {
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin'
+  };
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
+}
+
 exports.handler = async function(event, context) {
-  // CORS preflight
+  const origin = event.headers.origin || event.headers.Origin || '';
+  const corsHeaders = getCorsHeaders(origin);
+
+  // Gestione preflight OPTIONS
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -31,7 +47,7 @@ exports.handler = async function(event, context) {
     };
   }
 
-  // SOLO POST ammesso
+  // Solo POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -40,12 +56,12 @@ exports.handler = async function(event, context) {
     };
   }
 
-  // Debug env
+  // Debug env (solo su errori)
   if (!SUPABASE_URL) console.error('❌ SUPABASE_URL mancante!');
   if (!SUPABASE_SERVICE_KEY) console.error('❌ SUPABASE_SERVICE_ROLE_KEY mancante!');
   if (!ELEVENLABS_API_KEY) console.error('❌ ELEVENLABS_API_KEY mancante!');
 
-  // Parsing del body JSON
+  // Parsing body
   let text, poesia_id;
   try {
     ({ text, poesia_id } = JSON.parse(event.body || '{}'));
@@ -67,7 +83,7 @@ exports.handler = async function(event, context) {
   }
 
   try {
-    // 1. Richiesta TTS a ElevenLabs (stream)
+    // 1. Richiesta TTS a ElevenLabs
     const ttsResponse = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
       {
@@ -98,7 +114,7 @@ exports.handler = async function(event, context) {
       };
     }
 
-    // 2. Upload audio su Supabase Storage
+    // 2. Upload su Supabase Storage
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
     const fileName = `poesia-${poesia_id}-${Date.now()}.mp3`;
 
@@ -119,7 +135,7 @@ exports.handler = async function(event, context) {
       };
     }
 
-    // 3. Ottieni URL pubblico del file caricato
+    // 3. Ottieni URL pubblico
     const { data: { publicUrl }, error: urlError } = supabase
       .storage
       .from('poetry-audio')
@@ -146,7 +162,7 @@ exports.handler = async function(event, context) {
 
     if (updateError) {
       console.error('❌ Errore update DB:', updateError.message);
-      // Proseguiamo comunque: l'audio è stato generato e caricato
+      // Prosegui comunque, l'audio è stato generato e caricato.
     }
 
     // Success!
