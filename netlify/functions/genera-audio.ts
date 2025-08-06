@@ -14,77 +14,71 @@ const supabase = createClient(
   SUPABASE_SERVICE_KEY
 );
 
-// --- CORS DOMAINS ---
+// --- ALLOWED ORIGINS ---
 const ALLOWED_ORIGINS = [
-  'https://poetry.theitalianpoetryproject.com',
-  'https://widget.theitalianpoetryproject.com',
-  'https://www.theitalianpoetryproject.com'
+  "https://www.theitalianpoetryproject.com",
+  "https://theitalianpoetryproject.com",
+  // Aggiungi altri domini qui se serve
 ];
 
-// CORS utility
-function getCorsHeaders(origin) {
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    return {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Max-Age': '86400'
-    };
-  }
-  // Fallback (no CORS)
-  return {};
-}
-
 exports.handler = async function(event, context) {
-  const origin = event.headers.origin || event.headers.Origin || '';
-  const corsHeaders = getCorsHeaders(origin);
+  const origin = event.headers.origin;
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 
-  // CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
+  // Rispondi subito alle richieste preflight (OPTIONS)
+  if (event.httpMethod === "OPTIONS") {
     return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: ''
+      statusCode: 204,
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "86400",
+      },
+      body: "",
     };
   }
 
-  // POST only
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ error: 'Solo POST ammesso' }),
     };
   }
 
-  // Debug su variabili ambiente (log solo su errori)
-  if (!SUPABASE_URL) console.error('❌ SUPABASE_URL mancante!');
-  if (!SUPABASE_SERVICE_KEY) console.error('❌ SUPABASE_SERVICE_ROLE_KEY mancante!');
-  if (!ELEVENLABS_API_KEY) console.error('❌ ELEVENLABS_API_KEY mancante!');
-
-  // Parsing del body JSON
+  // ... (resto della tua function identico a prima, solo aggiungi gli headers CORS ai return!)
   let text, poesia_id;
   try {
     ({ text, poesia_id } = JSON.parse(event.body || '{}'));
-    if (!text || !poesia_id) throw new Error();
-  } catch {
+  } catch (err) {
     return {
       statusCode: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ error: 'Body non valido' }),
+    };
+  }
+
+  if (!text || !poesia_id) {
+    return {
+      statusCode: 400,
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ error: 'Testo o ID poesia mancante' }),
     };
   }
 
-  if (!ELEVENLABS_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    return {
-      statusCode: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Configurazione server incompleta (env missing)' }),
-    };
-  }
-
   try {
-    // 1. Richiesta TTS a ElevenLabs (stream endpoint)
+    // --- RICHIESTA A ELEVENLABS ---
     const ttsResponse = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
       {
@@ -106,17 +100,17 @@ exports.handler = async function(event, context) {
 
     if (!ttsResponse.ok) {
       const errorText = await ttsResponse.text();
-      console.error('❌ Errore ElevenLabs:', errorText);
       return {
         statusCode: ttsResponse.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          "Access-Control-Allow-Origin": allowOrigin,
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ error: 'Errore dal servizio vocale', details: errorText }),
       };
     }
 
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
-
-    // 2. Carica su Supabase Storage
     const fileName = `poesia-${poesia_id}-${Date.now()}.mp3`;
 
     const { error: uploadError } = await supabase
@@ -128,52 +122,54 @@ exports.handler = async function(event, context) {
       });
 
     if (uploadError) {
-      console.error('❌ Errore upload Supabase:', uploadError.message);
       return {
         statusCode: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          "Access-Control-Allow-Origin": allowOrigin,
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ error: 'Upload audio fallito', details: uploadError.message }),
       };
     }
 
-    // 3. Ottieni URL pubblico del file caricato
     const { data: { publicUrl }, error: urlError } = supabase
       .storage
       .from('poetry-audio')
       .getPublicUrl(fileName);
 
     if (urlError || !publicUrl) {
-      console.error('❌ Errore publicUrl Supabase:', urlError?.message);
       return {
         statusCode: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          "Access-Control-Allow-Origin": allowOrigin,
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ error: 'URL pubblico non trovato', details: urlError?.message }),
       };
     }
 
-    // 4. Aggiorna la tabella poesie
-    const { error: updateError } = await supabase
+    await supabase
       .from('poesie')
       .update({ audio_url: publicUrl, audio_generated: true })
       .eq('id', poesia_id);
 
-    if (updateError) {
-      console.error('❌ Errore update DB:', updateError.message);
-      // Proseguiamo comunque, perché l'audio è stato generato e caricato.
-    }
-
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ audio_url: publicUrl }),
     };
 
   } catch (error) {
-    console.error('❌ Errore generale:', error);
     return {
       statusCode: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Errore interno del server' }),
+      headers: {
+        "Access-Control-Allow-Origin": allowOrigin,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ error: 'Errore interno del server', details: error.message }),
     };
   }
 };
