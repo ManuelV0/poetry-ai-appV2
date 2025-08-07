@@ -1,16 +1,23 @@
 
-// netlify/functions/genera-audio.js
-
 const { createClient } = require('@supabase/supabase-js');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
+// --- CONFIGURAZIONE SUPABASE (SERVICE KEY necessaria!) ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const VOICE_ID = 'uScy1bXtKz8vPzfdFsFw'; // Voce italiana maschile ElevenLabs
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+console.log("[BOOT] SUPABASE_URL:", SUPABASE_URL);
+console.log("[BOOT] SUPABASE_SERVICE_KEY:", SUPABASE_SERVICE_KEY ? SUPABASE_SERVICE_KEY.slice(0,8)+"..." : "undefined");
+console.log("[BOOT] ELEVENLABS_API_KEY:", ELEVENLABS_API_KEY ? ELEVENLABS_API_KEY.slice(0,8)+"..." : "undefined");
 
+const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_SERVICE_KEY
+);
+
+// --- CORS UNIVERSALE ROBUSTO ---
 const ALLOWED_ORIGINS = [
   "https://www.theitalianpoetryproject.com",
   "https://theitalianpoetryproject.com",
@@ -33,7 +40,9 @@ exports.handler = async function(event, context) {
     "Vary": "Origin"
   };
 
+  // --- Preflight CORS ---
   if (event.httpMethod === "OPTIONS") {
+    console.log("[CORS] Preflight OPTIONS request");
     return {
       statusCode: 204,
       headers: CORS_HEADERS,
@@ -41,7 +50,9 @@ exports.handler = async function(event, context) {
     };
   }
 
+  // --- Solo POST ---
   if (event.httpMethod !== 'POST') {
+    console.log("[ERROR] Metodo non ammesso:", event.httpMethod);
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
@@ -49,8 +60,13 @@ exports.handler = async function(event, context) {
     };
   }
 
+  // --- Check ENV ---
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ELEVENLABS_API_KEY) {
-    console.error('ENV error:', {SUPABASE_URL, SUPABASE_SERVICE_KEY, ELEVENLABS_API_KEY});
+    console.log("[ERROR] Variabili ENV mancanti!", {
+      SUPABASE_URL,
+      SUPABASE_SERVICE_KEY,
+      ELEVENLABS_API_KEY
+    });
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
@@ -58,11 +74,13 @@ exports.handler = async function(event, context) {
     };
   }
 
+  // --- Parse dati body ---
   let text, poesia_id;
   try {
     ({ text, poesia_id } = JSON.parse(event.body || '{}'));
+    console.log("[PAYLOAD] text:", text ? text.slice(0,30)+"..." : undefined, "poesia_id:", poesia_id);
   } catch (err) {
-    console.error("Body non valido:", event.body);
+    console.log("[ERROR] Body non valido:", err);
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
@@ -71,7 +89,7 @@ exports.handler = async function(event, context) {
   }
 
   if (!text || !poesia_id) {
-    console.error("Mancanza di dati:", {text, poesia_id});
+    console.log("[ERROR] text o poesia_id mancante!");
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
@@ -80,6 +98,8 @@ exports.handler = async function(event, context) {
   }
 
   try {
+    // 1. Richiesta TTS a ElevenLabs
+    console.log("[TTS] Invio richiesta a ElevenLabs...");
     const ttsResponse = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
       {
@@ -101,19 +121,20 @@ exports.handler = async function(event, context) {
 
     if (!ttsResponse.ok) {
       const errorText = await ttsResponse.text();
-      let msg = "Errore dal servizio vocale. ";
-      if (ttsResponse.status === 429) msg += "Hai richiesto troppi audio: riprova tra qualche secondo.";
-      if (ttsResponse.status === 401) msg += "Autorizzazione fallita: verifica le chiavi di accesso.";
-      console.error("ElevenLabs error:", ttsResponse.status, errorText, text.slice(0,40));
+      console.log("[ERROR] ElevenLabs:", ttsResponse.status, errorText);
       return {
         statusCode: ttsResponse.status,
         headers: CORS_HEADERS,
-        body: JSON.stringify({ error: msg, details: errorText }),
+        body: JSON.stringify({ error: 'Errore dal servizio vocale', details: errorText }),
       };
     }
 
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
+    console.log("[TTS] Audio generato:", audioBuffer.length, "bytes");
+
+    // 2. Carica su Supabase Storage
     const fileName = `poesia-${poesia_id}-${Date.now()}.mp3`;
+    console.log("[SUPABASE] Upload in corso:", fileName);
 
     const { error: uploadError } = await supabase
       .storage
@@ -124,37 +145,44 @@ exports.handler = async function(event, context) {
       });
 
     if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
+      console.log("[ERROR] Supabase upload error:", uploadError);
       return {
         statusCode: 500,
         headers: CORS_HEADERS,
         body: JSON.stringify({ error: 'Upload audio fallito', details: uploadError.message }),
       };
     }
+    console.log("[SUPABASE] Upload OK");
 
+    // 3. Ottieni URL pubblico
     const { data: { publicUrl }, error: urlError } = supabase
       .storage
       .from('poetry-audio')
       .getPublicUrl(fileName);
 
     if (urlError || !publicUrl) {
-      console.error("Supabase getPublicUrl error:", urlError);
+      console.log("[ERROR] Supabase getPublicUrl error:", urlError);
       return {
         statusCode: 500,
         headers: CORS_HEADERS,
         body: JSON.stringify({ error: 'URL pubblico non trovato', details: urlError?.message }),
       };
     }
+    console.log("[SUPABASE] URL pubblico:", publicUrl);
 
+    // 4. Aggiorna la tabella poesie
     const { error: updateError } = await supabase
       .from('poesie')
       .update({ audio_url: publicUrl, audio_generated: true })
       .eq('id', poesia_id);
 
     if (updateError) {
-      console.error("Supabase update error:", updateError);
+      console.log("[WARNING] DB update error:", updateError.message);
+    } else {
+      console.log("[DB] poesia aggiornata con audio_url");
     }
 
+    // Successo finale!
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -162,7 +190,7 @@ exports.handler = async function(event, context) {
     };
 
   } catch (error) {
-    console.error("GENERA-AUDIO ERROR:", error, error?.stack);
+    console.log("[ERROR] catch generale:", error);
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
