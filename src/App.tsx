@@ -21,7 +21,7 @@ function PoesiaBox({ poesia, audioState }) {
   let stato = "Non generato"
   if (audioState === "generato") stato = "Audio generato"
   if (audioState === "in_corso") stato = "Generazione in corso..."
-  
+
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
       <div
@@ -152,7 +152,6 @@ export default function App() {
 
   // Aggiorna stati audio ogni volta che cambiano le poesie
   useEffect(() => {
-    // Nuovo mapping { poesia.id: stato }
     let newStatus = {}
     poesie.forEach(p => {
       if (p.audio_url) newStatus[p.id] = "generato"
@@ -160,12 +159,11 @@ export default function App() {
       else newStatus[p.id] = "non_generato"
     })
     setAudioStatus(newStatus)
-  // eslint-disable-next-line
+    // eslint-disable-next-line
   }, [poesie])
 
-  // Gestione coda generazione
+  // Gestione coda generazione, UNA ogni 2 minuti
   useEffect(() => {
-    // Crea coda con le poesie senza audio
     const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== "in_corso")
     if (daGenerare.length === 0) return
 
@@ -173,7 +171,7 @@ export default function App() {
 
     const tryGenerate = async () => {
       const now = Date.now()
-      if (now - lastGenRef.current < 2 * 60 * 1000) return  // 2 minuti
+      if (now - lastGenRef.current < 2 * 60 * 1000) return  // 2 minuti tra una generazione e l'altra
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
@@ -204,7 +202,7 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec, solo 1 ogni 2min parte!
+    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec, parte solo 1 ogni 2 min!
     return () => clearInterval(interval)
     // eslint-disable-next-line
   }, [poesie, audioStatus])
