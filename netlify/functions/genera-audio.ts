@@ -37,6 +37,7 @@ exports.handler = async function(event, context) {
 
   // --- Preflight CORS ---
   if (event.httpMethod === "OPTIONS") {
+    console.log("[CORS] Preflight OPTIONS ricevuto");
     return {
       statusCode: 204,
       headers: CORS_HEADERS,
@@ -46,6 +47,7 @@ exports.handler = async function(event, context) {
 
   // --- Solo POST ---
   if (event.httpMethod !== 'POST') {
+    console.log("[ERROR] Metodo non consentito:", event.httpMethod);
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
@@ -55,6 +57,7 @@ exports.handler = async function(event, context) {
 
   // --- Check ENV ---
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ELEVENLABS_API_KEY) {
+    console.log("[ERROR] ENV mancante:", { SUPABASE_URL, SUPABASE_SERVICE_KEY, ELEVENLABS_API_KEY });
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
@@ -66,7 +69,9 @@ exports.handler = async function(event, context) {
   let text, poesia_id;
   try {
     ({ text, poesia_id } = JSON.parse(event.body || '{}'));
+    console.log("[INFO] Ricevuto testo e poesia_id:", !!text, poesia_id);
   } catch (err) {
+    console.log("[ERROR] Body non valido:", event.body, err);
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
@@ -75,6 +80,7 @@ exports.handler = async function(event, context) {
   }
 
   if (!text || !poesia_id) {
+    console.log("[ERROR] Testo o ID poesia mancante:", { text, poesia_id });
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
@@ -84,6 +90,7 @@ exports.handler = async function(event, context) {
 
   try {
     // 1. Richiesta TTS a ElevenLabs
+    console.log("[TTS] Invio richiesta a ElevenLabs...");
     const ttsResponse = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
       {
@@ -105,6 +112,7 @@ exports.handler = async function(event, context) {
 
     if (!ttsResponse.ok) {
       const errorText = await ttsResponse.text();
+      console.log("[ERROR] ElevenLabs TTS:", ttsResponse.status, errorText);
       return {
         statusCode: ttsResponse.status,
         headers: CORS_HEADERS,
@@ -113,9 +121,11 @@ exports.handler = async function(event, context) {
     }
 
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
+    console.log("[SUCCESS] Audio buffer generato, lunghezza:", audioBuffer.length);
 
     // 2. Carica su Supabase Storage
     const fileName = `poesia-${poesia_id}-${Date.now()}.mp3`;
+    console.log("[STORAGE] Upload audio:", fileName);
 
     const { error: uploadError } = await supabase
       .storage
@@ -126,6 +136,7 @@ exports.handler = async function(event, context) {
       });
 
     if (uploadError) {
+      console.log("[ERROR] Upload fallito:", uploadError.message);
       return {
         statusCode: 500,
         headers: CORS_HEADERS,
@@ -139,7 +150,10 @@ exports.handler = async function(event, context) {
       .from('poetry-audio')
       .getPublicUrl(fileName);
 
+    console.log("[STORAGE] Public URL:", publicUrl);
+
     if (urlError || !publicUrl) {
+      console.log("[ERROR] Public URL mancante:", urlError);
       return {
         statusCode: 500,
         headers: CORS_HEADERS,
@@ -153,9 +167,14 @@ exports.handler = async function(event, context) {
       .update({ audio_url: publicUrl, audio_generated: true })
       .eq('id', poesia_id);
 
-    // Non è bloccante: puoi non fare throw qui
+    if (updateError) {
+      console.log("[ERROR] Update DB:", updateError.message);
+    } else {
+      console.log("[DB] Tabella aggiornata!");
+    }
 
     // Successo finale!
+    console.log("[DONE] Audio generato per poesia:", poesia_id);
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -163,6 +182,7 @@ exports.handler = async function(event, context) {
     };
 
   } catch (error) {
+    console.log("[FATAL ERROR]", error);
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
@@ -170,3 +190,4 @@ exports.handler = async function(event, context) {
     };
   }
 };
+
