@@ -3,9 +3,7 @@ import { supabase } from './lib/supabaseClient'
 
 // URL ASSOLUTO DELLA FUNCTION
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
-
-// --- COPIA QUI LA TUA ANON KEY (solo per test, poi rimettila in .env!) ---
-// const HARDCODED_ANON_KEY = 'COPIA_LA_TUA_ANON_KEY_QUI';
+const POESIE_API_URL = '/.netlify/functions/poesie' // Cambia qui se serve path diverso
 
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
@@ -129,18 +127,18 @@ export default function App() {
   const lastGenRef = useRef(0)
   const genQueueRef = useRef([])
 
-  // Carica poesie
+  // Carica poesie tramite function edge (NO SUPABASE CLIENT!)
   const fetchPoesie = async () => {
-    const { data, error } = await supabase
-      .from('poesie')
-      .select('id, title, content, author_name, analisi_letteraria, analisi_psicologica, created_at, audio_url')
-      .order('created_at', { ascending: false })
-
-    if (!error) setPoesie(data || [])
+    try {
+      const res = await fetch(POESIE_API_URL)
+      const data = await res.json()
+      setPoesie(data || [])
+    } catch (e) {
+      setPoesie([])
+    }
     setLoading(false)
   }
 
-  // Ciclo polling poesie
   useEffect(() => {
     fetchPoesie()
     const interval = setInterval(fetchPoesie, 15000)
@@ -176,17 +174,12 @@ export default function App() {
       lastGenRef.current = Date.now()
       const poesia = poesie.find(p => p.id === nextId)
 
-      // --- DEBUG: STAMPA IL VALORE DELLA APIKEY
-      console.log('VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY)
-      // console.log('HARDCODED_ANON_KEY:', HARDCODED_ANON_KEY)
-
       try {
         const res = await fetch(AUDIO_API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // Usa o env o HARDCODED_ANON_KEY per test:
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '', // oppure HARDCODED_ANON_KEY
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
           },
           body: JSON.stringify({
             text: poesia.content,
