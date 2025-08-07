@@ -1,62 +1,29 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from './lib/supabaseClient'
 
-// URL ASSOLUTO DELLA FUNCTION, cambia se usi dev
+// URL ASSOLUTO DELLA FUNCTION
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
 
 // ---- COMPONENTE SINGOLA POESIA ----
-function PoesiaBox({ poesia }: { poesia: any }) {
+function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
-  const [poesiaData, setPoesiaData] = useState(poesia)
-  const [loadingAudio, setLoadingAudio] = useState(false)
-  const [audioUrl, setAudioUrl] = useState<string | null>(poesia.audio_url || null)
 
   // Parse analisi se arriva come stringa
-  let analisiL = poesiaData.analisi_letteraria
-  let analisiP = poesiaData.analisi_psicologica
+  let analisiL = poesia.analisi_letteraria
+  let analisiP = poesia.analisi_psicologica
   try {
     if (typeof analisiL === 'string') analisiL = JSON.parse(analisiL)
     if (typeof analisiP === 'string') analisiP = JSON.parse(analisiP)
   } catch {}
   const tonoEmotivo = analisiP?.tono_emotivo || ''
 
-  // Handler per generare l'audio (Netlify Functions)
-  const handleGeneraAudio = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLoadingAudio(true)
-    try {
-      if (audioUrl) {
-        setLoadingAudio(false)
-        return
-      }
-      const res = await fetch(AUDIO_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: poesiaData.content,
-          poesia_id: poesiaData.id
-        })
-      })
-      const json = await res.json()
-      if (json.audio_url) {
-        setAudioUrl(json.audio_url)
-        setPoesiaData((prev: any) => ({ ...prev, audio_url: json.audio_url }))
-        await supabase
-          .from('poesie')
-          .update({ audio_url: json.audio_url, audio_generated: true })
-          .eq('id', poesiaData.id)
-      } else if (json.audioUrl) {
-        setAudioUrl(json.audioUrl)
-      }
-    } catch (err) {
-      alert('Errore nella generazione audio.')
-    }
-    setLoadingAudio(false)
-  }
-
+  // Stato audio visuale
+  let stato = "Non generato"
+  if (audioState === "generato") stato = "Audio generato"
+  if (audioState === "in_corso") stato = "Generazione in corso..."
+  
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
-      {/* Titolo, autore, tono */}
       <div
         className="cursor-pointer flex justify-between items-start"
         onClick={() => setAperta(v => !v)}
@@ -78,22 +45,15 @@ function PoesiaBox({ poesia }: { poesia: any }) {
         </span>
       </div>
 
-      {/* Player audio o bottone genera */}
+      {/* Stato audio + player */}
       {aperta && (
         <div className="mt-6">
-          {audioUrl ? (
+          <div className="mb-2 font-semibold text-sm text-green-800">{stato}</div>
+          {audioState === "generato" && poesia.audio_url && (
             <audio controls className="my-2 w-full">
-              <source src={audioUrl} type="audio/mpeg" />
+              <source src={poesia.audio_url} type="audio/mpeg" />
               Il tuo browser non supporta l'audio.
             </audio>
-          ) : (
-            <button
-              className="mt-2 bg-green-600 text-white px-4 py-1 rounded shadow font-semibold hover:bg-green-700 transition"
-              onClick={handleGeneraAudio}
-              disabled={loadingAudio}
-            >
-              {loadingAudio ? 'Generazione in corso...' : '🎙️ Genera voce AI'}
-            </button>
           )}
         </div>
       )}
@@ -114,7 +74,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
                 </p>
                 <p className="mb-1 font-semibold">Temi:</p>
                 <ul className="list-disc list-inside ml-6 text-green-600 mb-3">
-                  {(analisiL.temi || []).map((tema: string, i: number) => (
+                  {(analisiL.temi || []).map((tema, i) => (
                     <li key={i}>{tema}</li>
                   ))}
                 </ul>
@@ -141,7 +101,7 @@ function PoesiaBox({ poesia }: { poesia: any }) {
               <>
                 <p className="mb-1 font-semibold">Emozioni:</p>
                 <ul className="list-disc list-inside ml-6 text-indigo-600 mb-3">
-                  {(analisiP.emozioni || []).map((emozione: string, i: number) => (
+                  {(analisiP.emozioni || []).map((emozione, i) => (
                     <li key={i}>{emozione}</li>
                   ))}
                 </ul>
@@ -164,35 +124,15 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   )
 }
 
-// --- AUTO-GENERA AUDIO SE MANCANTE ---
-const generaAudioSeManca = async (poesia: any) => {
-  if (poesia.audio_url) return
-  try {
-    const res = await fetch(AUDIO_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: poesia.content,
-        poesia_id: poesia.id
-      })
-    })
-    const json = await res.json()
-    if (json.audio_url) {
-      await supabase
-        .from('poesie')
-        .update({ audio_url: json.audio_url, audio_generated: true })
-        .eq('id', poesia.id)
-    }
-  } catch (err) {
-    console.warn('Errore auto-generazione audio:', err)
-  }
-}
-
 export default function App() {
-  const [poesie, setPoesie] = useState<any[]>([])
+  const [poesie, setPoesie] = useState([])
+  const [audioStatus, setAudioStatus] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const lastGenRef = useRef(0)
+  const genQueueRef = useRef([])
 
+  // Carica poesie
   const fetchPoesie = async () => {
     const { data, error } = await supabase
       .from('poesie')
@@ -203,20 +143,73 @@ export default function App() {
     setLoading(false)
   }
 
+  // Ciclo polling poesie
   useEffect(() => {
     fetchPoesie()
     const interval = setInterval(fetchPoesie, 15000)
     return () => clearInterval(interval)
   }, [])
 
-  // --- AUTO GENERAZIONE AUDIO SE MANCANTE ---
+  // Aggiorna stati audio ogni volta che cambiano le poesie
   useEffect(() => {
+    // Nuovo mapping { poesia.id: stato }
+    let newStatus = {}
     poesie.forEach(p => {
-      if (!p.audio_url) generaAudioSeManca(p)
+      if (p.audio_url) newStatus[p.id] = "generato"
+      else if (audioStatus[p.id] === "in_corso") newStatus[p.id] = "in_corso"
+      else newStatus[p.id] = "non_generato"
     })
-    // eslint-disable-next-line
+    setAudioStatus(newStatus)
+  // eslint-disable-next-line
   }, [poesie])
 
+  // Gestione coda generazione
+  useEffect(() => {
+    // Crea coda con le poesie senza audio
+    const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== "in_corso")
+    if (daGenerare.length === 0) return
+
+    genQueueRef.current = daGenerare.map(p => p.id)
+
+    const tryGenerate = async () => {
+      const now = Date.now()
+      if (now - lastGenRef.current < 2 * 60 * 1000) return  // 2 minuti
+      const nextId = genQueueRef.current.shift()
+      if (!nextId) return
+
+      setAudioStatus(st => ({ ...st, [nextId]: "in_corso" }))
+      lastGenRef.current = Date.now()
+      const poesia = poesie.find(p => p.id === nextId)
+      try {
+        const res = await fetch(AUDIO_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: poesia.content,
+            poesia_id: poesia.id
+          })
+        })
+        const json = await res.json()
+        if (json.audio_url) {
+          await supabase
+            .from('poesie')
+            .update({ audio_url: json.audio_url, audio_generated: true })
+            .eq('id', poesia.id)
+          setAudioStatus(st => ({ ...st, [nextId]: "generato" }))
+        } else {
+          setAudioStatus(st => ({ ...st, [nextId]: "non_generato" }))
+        }
+      } catch (err) {
+        setAudioStatus(st => ({ ...st, [nextId]: "non_generato" }))
+      }
+    }
+
+    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec, solo 1 ogni 2min parte!
+    return () => clearInterval(interval)
+    // eslint-disable-next-line
+  }, [poesie, audioStatus])
+
+  // Filtra poesie
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -243,7 +236,7 @@ export default function App() {
       <div className="poesie-list" style={{maxHeight: "70vh", overflowY: "auto"}}>
         {poesieFiltrate.length > 0 ? (
           poesieFiltrate.map(poesia => (
-            <PoesiaBox key={poesia.id} poesia={poesia} />
+            <PoesiaBox key={poesia.id} poesia={poesia} audioState={audioStatus[poesia.id] || "non_generato"} />
           ))
         ) : (
           !loading && (
