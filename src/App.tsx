@@ -53,6 +53,11 @@ function PoesiaBox({ poesia }: { poesia: any }) {
     setLoadingAudio(false)
   }
 
+  // Se cambia prop poesia.audio_url (dopo generazione automatica)
+  useEffect(() => {
+    if (poesia.audio_url && !audioUrl) setAudioUrl(poesia.audio_url)
+  }, [poesia.audio_url])
+
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
       {/* Titolo, autore, tono */}
@@ -163,6 +168,31 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   )
 }
 
+// GENERA AUDIO AUTOMATICAMENTE SE MANCA
+async function generaAudioSeManca(poesia, setPoesie) {
+  if (poesia.audio_url) return
+  try {
+    const res = await fetch('/.netlify/functions/genera-audio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: poesia.content,
+        poesia_id: poesia.id
+      })
+    })
+    const json = await res.json()
+    if (json.audio_url) {
+      setPoesie(prev =>
+        prev.map(p =>
+          p.id === poesia.id ? { ...p, audio_url: json.audio_url } : p
+        )
+      )
+    }
+  } catch (err) {
+    console.error('Errore generazione audio:', err)
+  }
+}
+
 export default function App() {
   const [poesie, setPoesie] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -183,6 +213,12 @@ export default function App() {
     const interval = setInterval(fetchPoesie, 15000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    poesie.forEach(p => {
+      if (!p.audio_url) generaAudioSeManca(p, setPoesie)
+    })
+  }, [poesie])
 
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
