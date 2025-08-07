@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from './lib/supabaseClient'
 
+// URL ASSOLUTO DELLA FUNCTION, cambia se usi dev
+const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
+
+// ---- COMPONENTE SINGOLA POESIA ----
 function PoesiaBox({ poesia }: { poesia: any }) {
   const [aperta, setAperta] = useState(false)
   const [poesiaData, setPoesiaData] = useState(poesia)
@@ -21,12 +25,11 @@ function PoesiaBox({ poesia }: { poesia: any }) {
     e.stopPropagation()
     setLoadingAudio(true)
     try {
-      // NON rigenerare se già presente
       if (audioUrl) {
         setLoadingAudio(false)
         return
       }
-      const res = await fetch('/.netlify/functions/genera-audio', {
+      const res = await fetch(AUDIO_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -35,11 +38,9 @@ function PoesiaBox({ poesia }: { poesia: any }) {
         })
       })
       const json = await res.json()
-      // Supporto sia audio_url (url fisico) che audioUrl (base64)
       if (json.audio_url) {
         setAudioUrl(json.audio_url)
         setPoesiaData((prev: any) => ({ ...prev, audio_url: json.audio_url }))
-        // Aggiorna anche in Supabase frontend (opzionale, per UX reattiva)
         await supabase
           .from('poesie')
           .update({ audio_url: json.audio_url, audio_generated: true })
@@ -52,11 +53,6 @@ function PoesiaBox({ poesia }: { poesia: any }) {
     }
     setLoadingAudio(false)
   }
-
-  // Se cambia prop poesia.audio_url (dopo generazione automatica)
-  useEffect(() => {
-    if (poesia.audio_url && !audioUrl) setAudioUrl(poesia.audio_url)
-  }, [poesia.audio_url])
 
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
@@ -168,11 +164,11 @@ function PoesiaBox({ poesia }: { poesia: any }) {
   )
 }
 
-// GENERA AUDIO AUTOMATICAMENTE SE MANCA
-async function generaAudioSeManca(poesia, setPoesie) {
+// --- AUTO-GENERA AUDIO SE MANCANTE ---
+const generaAudioSeManca = async (poesia: any) => {
   if (poesia.audio_url) return
   try {
-    const res = await fetch('/.netlify/functions/genera-audio', {
+    const res = await fetch(AUDIO_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -182,14 +178,13 @@ async function generaAudioSeManca(poesia, setPoesie) {
     })
     const json = await res.json()
     if (json.audio_url) {
-      setPoesie(prev =>
-        prev.map(p =>
-          p.id === poesia.id ? { ...p, audio_url: json.audio_url } : p
-        )
-      )
+      await supabase
+        .from('poesie')
+        .update({ audio_url: json.audio_url, audio_generated: true })
+        .eq('id', poesia.id)
     }
   } catch (err) {
-    console.error('Errore generazione audio:', err)
+    console.warn('Errore auto-generazione audio:', err)
   }
 }
 
@@ -214,10 +209,12 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  // --- AUTO GENERAZIONE AUDIO SE MANCANTE ---
   useEffect(() => {
     poesie.forEach(p => {
-      if (!p.audio_url) generaAudioSeManca(p, setPoesie)
+      if (!p.audio_url) generaAudioSeManca(p)
     })
+    // eslint-disable-next-line
   }, [poesie])
 
   const poesieFiltrate = poesie.filter(p =>
@@ -231,7 +228,6 @@ export default function App() {
       <h1 className="text-3xl font-extrabold mb-6 text-center text-green-700 tracking-wide font-montserrat">
         TheItalianPoetryProject.com
       </h1>
-
       <div className="mb-8 poetry-search-bar">
         <input
           type="search"
@@ -243,9 +239,7 @@ export default function App() {
           autoComplete="off"
         />
       </div>
-
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
-
       <div className="poesie-list" style={{maxHeight: "70vh", overflowY: "auto"}}>
         {poesieFiltrate.length > 0 ? (
           poesieFiltrate.map(poesia => (
