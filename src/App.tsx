@@ -4,10 +4,12 @@ import { supabase } from './lib/supabaseClient'
 // URL ASSOLUTO DELLA FUNCTION
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
 
+// --- COPIA QUI LA TUA ANON KEY (solo per test, poi rimettila in .env!) ---
+// const HARDCODED_ANON_KEY = 'COPIA_LA_TUA_ANON_KEY_QUI';
+
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
 
-  // Parse analisi se arriva come stringa
   let analisiL = poesia.analisi_letteraria
   let analisiP = poesia.analisi_psicologica
   try {
@@ -42,7 +44,6 @@ function PoesiaBox({ poesia, audioState }) {
           {aperta ? '▲ Chiudi' : '▼ Apri'}
         </span>
       </div>
-
       {/* Stato audio + player */}
       {aperta && (
         <div className="mt-6">
@@ -55,7 +56,6 @@ function PoesiaBox({ poesia, audioState }) {
           )}
         </div>
       )}
-
       {/* Analisi */}
       {aperta && (
         <div className="mt-8 space-y-6">
@@ -89,7 +89,6 @@ function PoesiaBox({ poesia, audioState }) {
               <p className="italic text-green-400">Nessuna analisi letteraria disponibile.</p>
             )}
           </section>
-
           {/* Analisi Psicologica */}
           <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300 font-open-sans">
             <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
@@ -176,12 +175,18 @@ export default function App() {
       setAudioStatus(st => ({ ...st, [nextId]: "in_corso" }))
       lastGenRef.current = Date.now()
       const poesia = poesie.find(p => p.id === nextId)
+
+      // --- DEBUG: STAMPA IL VALORE DELLA APIKEY
+      console.log('VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY)
+      // console.log('HARDCODED_ANON_KEY:', HARDCODED_ANON_KEY)
+
       try {
         const res = await fetch(AUDIO_API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY // <--- QUI!
+            // Usa o env o HARDCODED_ANON_KEY per test:
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '', // oppure HARDCODED_ANON_KEY
           },
           body: JSON.stringify({
             text: poesia.content,
