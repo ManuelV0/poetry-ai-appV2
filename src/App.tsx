@@ -4,7 +4,6 @@ import { supabase } from './lib/supabaseClient'
 // URL ASSOLUTO DELLA FUNCTION
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
 
-// ---- COMPONENTE SINGOLA POESIA ----
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
 
@@ -17,7 +16,6 @@ function PoesiaBox({ poesia, audioState }) {
   } catch {}
   const tonoEmotivo = analisiP?.tono_emotivo || ''
 
-  // Stato audio visuale
   let stato = "Non generato"
   if (audioState === "generato") stato = "Audio generato"
   if (audioState === "in_corso") stato = "Generazione in corso..."
@@ -181,7 +179,10 @@ export default function App() {
       try {
         const res = await fetch(AUDIO_API_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY // <<< AGGIUNTO QUI
+          },
           body: JSON.stringify({
             text: poesia.content,
             poesia_id: poesia.id
