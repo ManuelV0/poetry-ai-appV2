@@ -8,29 +8,50 @@ const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/funct
 const POESIE_API_URL = '/.netlify/functions/poesie'
 const ANALISI_API_URL = '/.netlify/functions/forza-analisi'
 
-type AnalisiPsicologica = any // struttura mista: può contenere sia "futurista strategico" che "psicologica dettagliata"
+type AnalisiPsicologica = any
 type AnalisiLetteraria = any
 
 function isNonEmptyObject(v: any) {
-  return v && typeof v === 'object' && Object.keys(v).length > 0
+  return v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+}
+
+function asText(v: any) {
+  if (v == null) return 'N/A'
+  const t = typeof v
+  if (t === 'string') return v as string
+  if (t === 'number' || t === 'boolean') return String(v)
+  if (Array.isArray(v)) {
+    // se è array di stringhe => elenco puntato gestito altrove; qui fallback sicuro
+    return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')
+  }
+  if (isNonEmptyObject(v)) return JSON.stringify(v, null, 2)
+  return 'N/A'
 }
 
 function SafeList({ items }: { items?: any[] }) {
-  if (!Array.isArray(items) || items.length === 0) return <p className="text-gray-500 italic">N/A</p>
+  if (!Array.isArray(items) || items.length === 0) {
+    return <p className="text-gray-500 italic">N/A</p>
+  }
   return (
     <ul className="list-disc list-inside ml-6">
-      {items.map((x, i) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}
+      {items.map((x, i) => (
+        <li key={i} className="whitespace-pre-wrap">
+          {typeof x === 'string' ? x : JSON.stringify(x)}
+        </li>
+      ))}
     </ul>
   )
 }
 
-function CitazioniList({ items }: { items?: string[] }) {
-  if (!Array.isArray(items) || items.length === 0) return <p className="text-gray-500 italic">Nessuna citazione</p>
+function CitazioniList({ items }: { items?: any[] }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <p className="text-gray-500 italic">Nessuna citazione</p>
+  }
   return (
     <ul className="list-disc list-inside ml-6">
       {items.map((c, i) => (
         <li key={i}>
-          <span className="block whitespace-pre-wrap">«{c}»</span>
+          <span className="block whitespace-pre-wrap">«{asText(c)}»</span>
         </li>
       ))}
     </ul>
@@ -40,7 +61,7 @@ function CitazioniList({ items }: { items?: string[] }) {
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
 
-  // Stato analisi: letteraria + psicologica
+  // Stato analisi: letteraria + psicologica (parse sicuro)
   const [analisiPsico, setAnalisiPsico] = useState<AnalisiPsicologica | null>(() => {
     try {
       const raw = poesia.analisi_psicologica
@@ -63,7 +84,7 @@ function PoesiaBox({ poesia, audioState }) {
     }
   })
 
-  const [analisiStatus, setAnalisiStatus] = useState<'idle'|'loading'|'success'|'error'>(
+  const [analisiStatus, setAnalisiStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     analisiPsico || analisiLett ? 'success' : 'idle'
   )
   const [analisiError, setAnalisiError] = useState<string | null>(null)
@@ -101,20 +122,20 @@ function PoesiaBox({ poesia, audioState }) {
           .select('analisi_letteraria, analisi_psicologica')
           .eq('id', poesia.id)
           .single()
-
         if (error) throw error
 
-        let nuovaPsico = data?.analisi_psicologica ?? null
-        let nuovaLett = data?.analisi_letteraria ?? null
-        try { if (typeof nuovaPsico === 'string') nuovaPsico = JSON.parse(nuovaPsico) } catch {}
-        try { if (typeof nuovaLett === 'string') nuovaLett = JSON.parse(nuovaLett) } catch {}
+        let nuovaPsico: any = data?.analisi_psicologica ?? null
+        let nuovaLett: any = data?.analisi_letteraria ?? null
+        try {
+          if (typeof nuovaPsico === 'string') nuovaPsico = JSON.parse(nuovaPsico)
+        } catch {}
+        try {
+          if (typeof nuovaLett === 'string') nuovaLett = JSON.parse(nuovaLett)
+        } catch {}
 
         const okPsico = isNonEmptyObject(nuovaPsico)
         const okLett = isNonEmptyObject(nuovaLett)
-
-        if (!okPsico && !okLett) {
-          throw new Error('Analisi assenti o non valide')
-        }
+        if (!okPsico && !okLett) throw new Error('Analisi assenti o non valide')
 
         setAnalisiPsico(okPsico ? nuovaPsico : null)
         setAnalisiLett(okLett ? nuovaLett : null)
@@ -130,9 +151,10 @@ function PoesiaBox({ poesia, audioState }) {
     genera()
   }, [aperta, analisiPsico, analisiLett, poesia.id, poesia.content])
 
-  // Blocchi di UI
+  // ---- Blocchi di UI ----
+
+  // (A) Analisi “Futurista Strategico” (vecchia struttura salvata in analisi_psicologica)
   const renderAnalisiFuturistaIfAny = () => {
-    // Se la psicologica ha ancora la vecchia struttura “futurista strategico”, mostriamola
     if (!analisiPsico) return null
     const a = analisiPsico
     const hasFuturista =
@@ -157,22 +179,26 @@ function PoesiaBox({ poesia, audioState }) {
           <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">
             Scenario Ottimistico
           </h3>
-          <p className="text-blue-700">{a?.scenario_ottimistico || 'N/A'}</p>
+          <p className="text-blue-700 whitespace-pre-wrap">{asText(a?.scenario_ottimistico)}</p>
         </section>
 
         <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
           <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">
             Scenario Pessimistico
           </h3>
-          <p className="text-red-700">{a?.scenario_pessimistico || 'N/A'}</p>
+          <p className="text-red-700 whitespace-pre-wrap">{asText(a?.scenario_pessimistico)}</p>
         </section>
 
         <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
           <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">
             Fattori Inattesi
           </h3>
-          <p><strong>Positivo (Jolly):</strong> {a?.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
-          <p><strong>Negativo (Cigno Nero):</strong> {a?.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
+          <p>
+            <strong>Positivo (Jolly):</strong> {asText(a?.fattori_inattesi?.positivo_jolly)}
+          </p>
+          <p>
+            <strong>Negativo (Cigno Nero):</strong> {asText(a?.fattori_inattesi?.negativo_cigno_nero)}
+          </p>
         </section>
 
         <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
@@ -188,13 +214,14 @@ function PoesiaBox({ poesia, audioState }) {
 
           <p className="mt-2">
             <strong>Rischio Esistenziale da Mitigare:</strong>{' '}
-            {a?.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}
+            {asText(a?.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare)}
           </p>
         </section>
       </>
     )
   }
 
+  // (B) Analisi Psicologica Dettagliata (fallacie/bias/difese/autosabotaggi)
   const renderAnalisiPsicologicaDettagliata = () => {
     if (!analisiPsico) return null
     const a = analisiPsico
@@ -240,6 +267,7 @@ function PoesiaBox({ poesia, audioState }) {
     )
   }
 
+  // (C) Analisi Letteraria (temi/citazioni, narratore, stile, contesto, sintesi)
   const renderAnalisiLetteraria = () => {
     if (!analisiLett) return null
     const a = analisiLett
@@ -269,8 +297,8 @@ function PoesiaBox({ poesia, audioState }) {
                 <h4 className="font-semibold text-emerald-900 mb-2">Temi principali</h4>
                 {temi.temi_principali.map((t, i) => (
                   <div key={i} className="mb-3">
-                    <p className="font-medium">{t?.tema || 'Tema'}</p>
-                    {t?.spiegazione && <p className="text-emerald-800">{t.spiegazione}</p>}
+                    <p className="font-medium">{asText(t?.tema) || 'Tema'}</p>
+                    {t?.spiegazione && <p className="text-emerald-800 whitespace-pre-wrap">{asText(t.spiegazione)}</p>}
                     {Array.isArray(t?.citazioni) && (
                       <div className="mt-1">
                         <p className="text-sm font-semibold">Citazioni:</p>
@@ -294,25 +322,39 @@ function PoesiaBox({ poesia, audioState }) {
             {temi?.tesi_filosofica && (
               <div className="mt-2">
                 <h4 className="font-semibold text-emerald-900 mb-1">Tesi filosofica</h4>
-                <p className="text-emerald-800">{temi.tesi_filosofica}</p>
+                <p className="text-emerald-800 whitespace-pre-wrap">{asText(temi.tesi_filosofica)}</p>
               </div>
             )}
           </section>
         )}
 
-        {/* 2 & 3. Personaggi + Stilistica/Narratologia */}
+        {/* 2 & 3. Stilistica/Narratologia (e opzionale Personaggi) */}
         {isNonEmptyObject(stile) && (
           <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
             <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
               Analisi Stilistica e Narratologica
             </h3>
 
-            {/* Stile */}
+            {/* Stile di scrittura: può essere stringa o oggetto (es. {ritmo, lessico, sintassi}) */}
             {stile?.stile && (
-              <>
+              <div className="mb-3">
                 <h4 className="font-semibold text-indigo-900 mb-1">Stile di scrittura</h4>
-                <p className="text-indigo-800 mb-3">{stile.stile}</p>
-              </>
+
+                {typeof stile.stile === 'string' ? (
+                  <p className="text-indigo-800 whitespace-pre-wrap">{stile.stile}</p>
+                ) : isNonEmptyObject(stile.stile) ? (
+                  <div className="text-indigo-800">
+                    {Object.entries(stile.stile).map(([k, v]: [string, any]) => (
+                      <p key={k} className="mb-1">
+                        <span className="font-semibold capitalize">{k}:</span>{' '}
+                        <span className="whitespace-pre-wrap">{asText(v)}</span>
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-indigo-800 whitespace-pre-wrap">{asText(stile.stile)}</p>
+                )}
+              </div>
             )}
 
             {/* Narratore e tempo */}
@@ -321,13 +363,13 @@ function PoesiaBox({ poesia, audioState }) {
                 {stile?.narratore && (
                   <div>
                     <h5 className="font-semibold text-indigo-900 mb-1">Narratore</h5>
-                    <p className="text-indigo-800">{stile.narratore}</p>
+                    <p className="text-indigo-800 whitespace-pre-wrap">{asText(stile.narratore)}</p>
                   </div>
                 )}
                 {stile?.tempo_narrativo && (
                   <div>
                     <h5 className="font-semibold text-indigo-900 mb-1">Tempo narrativo</h5>
-                    <p className="text-indigo-800">{stile.tempo_narrativo}</p>
+                    <p className="text-indigo-800 whitespace-pre-wrap">{asText(stile.tempo_narrativo)}</p>
                   </div>
                 )}
               </div>
@@ -339,27 +381,27 @@ function PoesiaBox({ poesia, audioState }) {
                 <h4 className="font-semibold text-indigo-900 mb-2">Figure/Dispositivi retorici</h4>
                 <ul className="list-disc list-inside ml-6 text-indigo-800">
                   {stile.dispositivi_retorici.map((d, i) => (
-                    <li key={i}>
-                      <span className="font-medium">{d?.nome || 'Dispositivo'}</span>
-                      {d?.effetto && <span>: {d.effetto}</span>}
+                    <li key={i} className="whitespace-pre-wrap">
+                      <span className="font-medium">{asText(d?.nome) || 'Dispositivo'}</span>
+                      {d?.effetto && <span>: {asText(d.effetto)}</span>}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Personaggi (se lo hai messo qui dentro) */}
+            {/* Personaggi (se presenti sotto stile.personaggi) */}
             {Array.isArray(stile?.personaggi) && stile.personaggi.length > 0 && (
               <div className="mt-4">
                 <h4 className="font-semibold text-indigo-900 mb-2">Personaggi e Analisi Psicologica</h4>
                 {stile.personaggi.map((p, i) => (
                   <div key={i} className="mb-3">
-                    <p className="font-medium">{p?.nome || 'Personaggio'}</p>
-                    {p?.arco && <p className="text-indigo-800">Arco: {p.arco}</p>}
+                    <p className="font-medium">{asText(p?.nome) || 'Personaggio'}</p>
+                    {p?.arco && <p className="text-indigo-800 whitespace-pre-wrap">Arco: {asText(p.arco)}</p>}
                     {p?.motivazioni && (
-                      <p className="text-indigo-800">Motivazioni: {p.motivazioni}</p>
+                      <p className="text-indigo-800 whitespace-pre-wrap">Motivazioni: {asText(p.motivazioni)}</p>
                     )}
-                    {p?.meccanismi_di_difesa && (
+                    {Array.isArray(p?.meccanismi_di_difesa) && (
                       <>
                         <p className="text-sm font-semibold mt-1">Meccanismi di difesa:</p>
                         <SafeList items={p.meccanismi_di_difesa} />
@@ -381,25 +423,54 @@ function PoesiaBox({ poesia, audioState }) {
             {contesto?.storico && (
               <>
                 <h4 className="font-semibold text-amber-900 mb-1">Contesto storico-culturale</h4>
-                <p className="text-amber-800 mb-2">{contesto.storico}</p>
+                <p className="text-amber-800 whitespace-pre-wrap mb-2">{asText(contesto.storico)}</p>
               </>
             )}
             {contesto?.biografico && (
               <>
                 <h4 className="font-semibold text-amber-900 mb-1">Note biografiche rilevanti</h4>
-                <p className="text-amber-800">{contesto.biografico}</p>
+                <p className="text-amber-800 whitespace-pre-wrap">{asText(contesto.biografico)}</p>
               </>
             )}
           </section>
         )}
 
-        {/* 5. Sintesi Critica e Conclusione */}
+        {/* 5. Sintesi Critica e Conclusione (stringa o oggetto con campi) */}
         {sintesi && (
           <section className="bg-slate-50 p-5 rounded shadow-inner border border-slate-300">
             <h3 className="font-bold text-slate-800 mb-3 border-b border-slate-400 pb-2 text-lg font-montserrat">
               Sintesi Critica e Conclusione
             </h3>
-            <p className="text-slate-800 whitespace-pre-wrap">{sintesi}</p>
+
+            {typeof sintesi === 'string' ? (
+              <p className="text-slate-800 whitespace-pre-wrap">{sintesi}</p>
+            ) : isNonEmptyObject(sintesi) ? (
+              <div className="text-slate-800 space-y-2">
+                {'sintesi' in sintesi && (
+                  <div>
+                    <h4 className="font-semibold">Sintesi</h4>
+                    <p className="whitespace-pre-wrap">{asText((sintesi as any).sintesi)}</p>
+                  </div>
+                )}
+                {'valutazione_finale' in sintesi && (
+                  <div>
+                    <h4 className="font-semibold">Valutazione finale</h4>
+                    <p className="whitespace-pre-wrap">{asText((sintesi as any).valutazione_finale)}</p>
+                  </div>
+                )}
+                {/* eventuali altri campi inattesi */}
+                {Object.keys(sintesi).some(
+                  (k) => k !== 'sintesi' && k !== 'valutazione_finale'
+                ) && (
+                  <div>
+                    <h4 className="font-semibold">Dettagli</h4>
+                    <pre className="whitespace-pre-wrap text-sm">{asText(sintesi)}</pre>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap text-sm">{asText(sintesi)}</pre>
+            )}
           </section>
         )}
       </>
@@ -411,7 +482,7 @@ function PoesiaBox({ poesia, audioState }) {
       {/* HEADER CARD */}
       <div
         className="cursor-pointer flex justify-between items-start"
-        onClick={() => setAperta(v => !v)}
+        onClick={() => setAperta((v) => !v)}
         role="button"
         aria-expanded={aperta}
       >
@@ -459,20 +530,13 @@ function PoesiaBox({ poesia, audioState }) {
           )}
           {(analisiPsico || analisiLett) && analisiStatus === 'success' && (
             <>
-              {/* Analisi Psicologica Dettagliata (fallacie/bias/difese/autosabotaggi) */}
               {renderAnalisiPsicologicaDettagliata()}
-
-              {/* Analisi Letteraria (temi/citazioni, narratore, stile, contesto, sintesi) */}
               {renderAnalisiLetteraria()}
-
-              {/* Eventuale blocco “Futurista Strategico” se presente nella psicologica */}
               {renderAnalisiFuturistaIfAny()}
             </>
           )}
           {!analisiPsico && !analisiLett && analisiStatus === 'idle' && (
-            <div className="text-gray-500 italic text-sm">
-              Analisi non disponibile per questa poesia.
-            </div>
+            <div className="text-gray-500 italic text-sm">Analisi non disponibile per questa poesia.</div>
           )}
         </div>
       )}
@@ -482,7 +546,7 @@ function PoesiaBox({ poesia, audioState }) {
 
 export default function App() {
   const [poesie, setPoesie] = useState<any[]>([])
-  const [audioStatus, setAudioStatus] = useState<Record<string, 'non_generato'|'in_corso'|'generato'>>({})
+  const [audioStatus, setAudioStatus] = useState<Record<string, 'non_generato' | 'in_corso' | 'generato'>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const lastGenRef = useRef(0)
@@ -508,7 +572,7 @@ export default function App() {
 
   // Stato audio derivato
   useEffect(() => {
-    const next: Record<string, 'non_generato'|'in_corso'|'generato'> = {}
+    const next: Record<string, 'non_generato' | 'in_corso' | 'generato'> = {}
     for (const p of poesie) {
       if (p.audio_url) next[p.id] = 'generato'
       else if (audioStatus[p.id] === 'in_corso') next[p.id] = 'in_corso'
@@ -520,10 +584,10 @@ export default function App() {
 
   // Coda: genera UN audio ogni 2 minuti
   useEffect(() => {
-    const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== 'in_corso')
+    const daGenerare = poesie.filter((p) => !p.audio_url && audioStatus[p.id] !== 'in_corso')
     if (daGenerare.length === 0) return
 
-    genQueueRef.current = daGenerare.map(p => p.id)
+    genQueueRef.current = daGenerare.map((p) => p.id)
 
     const tryGenerate = async () => {
       const now = Date.now()
@@ -531,10 +595,10 @@ export default function App() {
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
-      setAudioStatus(st => ({ ...st, [nextId]: 'in_corso' }))
+      setAudioStatus((st) => ({ ...st, [nextId]: 'in_corso' }))
       lastGenRef.current = Date.now()
 
-      const poesia = poesie.find(p => p.id === nextId)
+      const poesia = poesie.find((p) => p.id === nextId)
       if (!poesia) return
 
       try {
@@ -542,7 +606,7 @@ export default function App() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': import.meta.env?.VITE_SUPABASE_ANON_KEY || '',
+            apikey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || ''
           },
           body: JSON.stringify({
             text: poesia.content,
@@ -551,16 +615,13 @@ export default function App() {
         })
         const json = await res.json()
         if (json.audio_url) {
-          await supabase
-            .from('poesie')
-            .update({ audio_url: json.audio_url, audio_generated: true })
-            .eq('id', poesia.id)
-          setAudioStatus(st => ({ ...st, [nextId]: 'generato' }))
+          await supabase.from('poesie').update({ audio_url: json.audio_url, audio_generated: true }).eq('id', poesia.id)
+          setAudioStatus((st) => ({ ...st, [nextId]: 'generato' }))
         } else {
-          setAudioStatus(st => ({ ...st, [nextId]: 'non_generato' }))
+          setAudioStatus((st) => ({ ...st, [nextId]: 'non_generato' }))
         }
       } catch {
-        setAudioStatus(st => ({ ...st, [nextId]: 'non_generato' }))
+        setAudioStatus((st) => ({ ...st, [nextId]: 'non_generato' }))
       }
     }
 
@@ -570,13 +631,14 @@ export default function App() {
   }, [poesie, audioStatus])
 
   // Filtri ricerca
-  const poesieFiltrate = poesie.filter(p =>
-    p.title?.toLowerCase().includes(search.toLowerCase()) ||
-    p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.content?.toLowerCase().includes(search.toLowerCase())
+  const poesieFiltrate = poesie.filter(
+    (p) =>
+      p.title?.toLowerCase().includes(search.toLowerCase()) ||
+      p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.content?.toLowerCase().includes(search.toLowerCase())
   )
 
-  return (
+    return (
     <main className="max-w-lg sm:max-w-3xl mx-auto p-6 bg-gray-50 min-h-screen font-open-sans">
       <h1 className="text-3xl font-extrabold mb-6 text-center text-green-700 tracking-wide font-montserrat">
         TheItalianPoetryProject.com
@@ -587,7 +649,7 @@ export default function App() {
         <input
           type="search"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Cerca per titolo, autore o testo..."
           className="w-full p-4 rounded-lg border border-gray-300 focus:outline-none focus:ring-4 focus:ring-green-500 focus:border-transparent text-gray-700 text-lg"
           aria-label="Barra di ricerca poesie"
@@ -600,7 +662,7 @@ export default function App() {
 
       <div className="poesie-list" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
         {poesieFiltrate.length > 0 ? (
-          poesieFiltrate.map(p => (
+          poesieFiltrate.map((p) => (
             <PoesiaBox
               key={p.id}
               poesia={p}
