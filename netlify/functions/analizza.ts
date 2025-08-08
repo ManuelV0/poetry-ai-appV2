@@ -89,37 +89,43 @@ const handler = async (event) => {
   let analisiGPT = {};
   try {
     const prompt = `
-Agisci come critico letterario e psicologo. Analizza la poesia seguente nei seguenti due blocchi:
+Agisci come un "Futurista Strategico" e un analista di sistemi complessi.
+Il tuo compito non è predire il futuro, ma mappare le sue possibilità per fornire un vantaggio decisionale.
 
-1. Analisi Letteraria:
-- Stile
-- Temi
-- Struttura
-- Eventuali riferimenti culturali
+Argomento: ${body.content}
 
-2. Analisi Psicologica:
-- Emozioni
-- Stato interiore del poeta
-- Visione del mondo
-
-Rispondi in JSON come segue:
+Proiettalo 20 anni nel futuro e crea un dossier strategico completo in formato JSON con la seguente struttura obbligatoria:
 
 {
-  "analisi_letteraria": {
-    "stile_letterario": "...",
-    "temi": ["...", "..."],
-    "struttura": "...",
-    "riferimenti_culturali": "..."
+  "vettori_di_cambiamento_attuali": [
+    "Descrizione del vettore 1",
+    "Descrizione del vettore 2",
+    "Descrizione del vettore 3"
+  ],
+  "scenario_ottimistico": "Descrizione dettagliata dell'utopia plausibile",
+  "scenario_pessimistico": "Descrizione dettagliata della distopia plausibile",
+  "fattori_inattesi": {
+    "positivo_jolly": "Evento positivo imprevisto",
+    "negativo_cigno_nero": "Evento negativo imprevisto"
   },
-  "analisi_psicologica": {
-    "emozioni": ["...", "..."],
-    "stato_interno": "...",
-    "visione_del_mondo": "..."
+  "dossier_strategico_oggi": {
+    "azioni_preparatorie_immediate": [
+      "Azione 1",
+      "Azione 2",
+      "Azione 3"
+    ],
+    "opportunita_emergenti": [
+      "Opportunità 1",
+      "Opportunità 2"
+    ],
+    "rischio_esistenziale_da_mitigare": "Descrizione del rischio"
   }
 }
 
-POESIA:
-${body.content}
+Requisiti:
+- Pensa in modo sistemico: le conclusioni devono derivare dall'interconnessione dei punti.
+- Tono lucido, strategico e privo di sensazionalismo.
+- Usa esempi concreti per illustrare i tuoi punti.
 `;
 
     const completion = await openai.chat.completions.create({
@@ -128,10 +134,8 @@ ${body.content}
       temperature: 0.7
     });
 
-    // Stampo per debug la risposta di OpenAI
     console.log("RISPOSTA OPENAI:", completion.choices[0].message.content);
 
-    // Se la risposta è una stringa JSON, provo a fare il parse
     try {
       analisiGPT = JSON.parse(completion.choices[0].message.content || '{}');
     } catch (jsonErr) {
@@ -140,7 +144,6 @@ ${body.content}
     }
 
   } catch (error) {
-    // In caso di errore OpenAI: fallback mock
     console.log("Errore chiamata OpenAI (usa mock):", error);
     analisiGPT = generateMockAnalysis(body.content);
   }
@@ -152,8 +155,8 @@ ${body.content}
     author_name: body.author_name || user.user_metadata?.full_name || null,
     profile_id: user.id,
     instagram_handle: body.instagram_handle || null,
-    analisi_letteraria: analisiGPT.analisi_letteraria || generateMockAnalysis(body.content).letteraria,
-    analisi_psicologica: analisiGPT.analisi_psicologica || generateMockAnalysis(body.content).psicologica,
+    analisi_letteraria: analisiGPT.vettori_di_cambiamento_attuali || generateMockAnalysis(body.content).vettori_di_cambiamento_attuali,
+    analisi_psicologica: analisiGPT || generateMockAnalysis(body.content),
     match_id: body.match_id || null,
     created_at: new Date().toISOString()
   };
@@ -190,19 +193,31 @@ ${body.content}
   }
 };
 
-// --- Mock fallback
+// --- Mock fallback aggiornato
 function generateMockAnalysis(content) {
   return {
-    analisi_letteraria: {
-      stile_letterario: content.length > 100 ? 'profondo' : 'leggero',
-      temi: ['natura', 'amore'],
-      struttura: content.split(' ').length > 50 ? 'strofe libere' : 'versi brevi',
-      riferimenti_culturali: 'Generici'
+    vettori_di_cambiamento_attuali: [
+      "Avanzamenti tecnologici generici",
+      "Cambiamenti sociali globali",
+      "Tendenze economiche emergenti"
+    ],
+    scenario_ottimistico: "Uno scenario futuro positivo basato su cooperazione globale e uso etico delle tecnologie.",
+    scenario_pessimistico: "Uno scenario negativo caratterizzato da crisi geopolitiche e uso dannoso delle tecnologie.",
+    fattori_inattesi: {
+      positivo_jolly: "Scoperta scientifica rivoluzionaria che risolve una crisi globale.",
+      negativo_cigno_nero: "Evento catastrofico imprevisto che sconvolge le economie mondiali."
     },
-    analisi_psicologica: {
-      emozioni: ['malinconia', 'speranza'],
-      stato_interno: 'Introspettivo',
-      visione_del_mondo: 'Ottimista ma riflessivo'
+    dossier_strategico_oggi: {
+      azioni_preparatorie_immediate: [
+        "Investire in formazione continua",
+        "Diversificare le fonti di reddito",
+        "Creare reti di collaborazione"
+      ],
+      opportunita_emergenti: [
+        "Sviluppo di tecnologie sostenibili",
+        "Mercati di nicchia legati all'adattamento climatico"
+      ],
+      rischio_esistenziale_da_mitigare: "Collasso ecologico globale"
     }
   };
 }
