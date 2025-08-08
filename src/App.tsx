@@ -1,4 +1,3 @@
-
 // src/App.tsx
 
 import React, { useEffect, useState, useRef } from 'react'
