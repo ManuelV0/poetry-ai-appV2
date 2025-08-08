@@ -1,3 +1,4 @@
+
 import { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
@@ -24,7 +25,7 @@ const handler: Handler = async (event) => {
       .from('poesie')
       .select('id, title, content, analisi_letteraria, analisi_psicologica')
       .or(
-        'analisi_letteraria.is.null,analisi_psicologica.is.null,analisi_letteraria.eq.{},analisi_psicologica.eq.{}'
+        'analisi_psicologica.is.null,analisi_psicologica.eq.{}'
       )
 
     if (error) throw error
@@ -33,39 +34,45 @@ const handler: Handler = async (event) => {
 
     for (const poesia of poesie || []) {
       try {
-        // 2. Prompt per analisi AI
+        // 2. Prompt per analisi AI (Futurista Strategico)
         const prompt = `
-Agisci come critico letterario e psicologo. Analizza la poesia seguente nei seguenti due blocchi:
+Agisci come un "Futurista Strategico" e un analista di sistemi complessi.
+Il tuo compito non è predire il futuro, ma mappare le sue possibilità per fornire un vantaggio decisionale.
 
-1. Analisi Letteraria:
-- Stile
-- Temi
-- Struttura
-- Eventuali riferimenti culturali
+Argomento: ${poesia.content}
 
-2. Analisi Psicologica:
-- Emozioni
-- Stato interiore del poeta
-- Visione del mondo
-
-Rispondi in JSON come segue:
+Proiettalo 20 anni nel futuro e crea un dossier strategico completo in formato JSON con la seguente struttura obbligatoria:
 
 {
-  "analisi_letteraria": {
-    "stile_letterario": "...",
-    "temi": ["...", "..."],
-    "struttura": "...",
-    "riferimenti_culturali": "..."
+  "vettori_di_cambiamento_attuali": [
+    "Descrizione del vettore 1",
+    "Descrizione del vettore 2",
+    "Descrizione del vettore 3"
+  ],
+  "scenario_ottimistico": "Descrizione dettagliata dell'utopia plausibile",
+  "scenario_pessimistico": "Descrizione dettagliata della distopia plausibile",
+  "fattori_inattesi": {
+    "positivo_jolly": "Evento positivo imprevisto",
+    "negativo_cigno_nero": "Evento negativo imprevisto"
   },
-  "analisi_psicologica": {
-    "emozioni": ["...", "..."],
-    "stato_interno": "...",
-    "visione_del_mondo": "..."
+  "dossier_strategico_oggi": {
+    "azioni_preparatorie_immediate": [
+      "Azione 1",
+      "Azione 2",
+      "Azione 3"
+    ],
+    "opportunita_emergenti": [
+      "Opportunità 1",
+      "Opportunità 2"
+    ],
+    "rischio_esistenziale_da_mitigare": "Descrizione del rischio"
   }
 }
 
-POESIA:
-${poesia.content}
+Requisiti:
+- Pensa in modo sistemico: le conclusioni devono derivare dall'interconnessione dei punti.
+- Tono lucido, strategico e privo di sensazionalismo.
+- Usa esempi concreti per illustrare i tuoi punti.
 `
         // 3. Chiamata a OpenAI
         const completion = await openai.chat.completions.create({
@@ -74,19 +81,19 @@ ${poesia.content}
           temperature: 0.7
         })
 
-        let analisiGPT
+        let analisiGPT: any
         try {
           analisiGPT = JSON.parse(completion.choices[0].message.content || '{}')
         } catch {
-          analisiGPT = { analisi_letteraria: {}, analisi_psicologica: {} }
+          analisiGPT = {}
         }
 
-        // 4. Aggiorna la poesia nel DB con le nuove analisi
+        // 4. Aggiorna la poesia nel DB con il dossier strategico
         const { error: updError } = await supabase
           .from('poesie')
           .update({
-            analisi_letteraria: analisiGPT.analisi_letteraria,
-            analisi_psicologica: analisiGPT.analisi_psicologica,
+            analisi_letteraria: null, // non più usata dal nuovo front-end
+            analisi_psicologica: analisiGPT
           })
           .eq('id', poesia.id)
 
