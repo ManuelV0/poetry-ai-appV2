@@ -1,19 +1,18 @@
-import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
-// --- Utility per ENV
+// === Utility per variabili d'ambiente ===
 const getEnvVar = (name) => {
   const value = process.env[name];
   if (!value) throw new Error(`Variabile d'ambiente mancante: ${name}`);
   return value;
 };
 
+// === Configurazione ===
 const supabaseUrl = getEnvVar('SUPABASE_URL');
-const supabaseKey = getEnvVar('SUPABASE_ANON_KEY');
+const supabaseKey = getEnvVar('SUPABASE_SERVICE_ROLE_KEY'); // Server-side sicuro
 const openaiKey = getEnvVar('OPENAI_API_KEY');
 
-// --- Supabase client
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false, autoRefreshToken: false },
   db: { schema: 'public' }
@@ -21,78 +20,112 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const openai = new OpenAI({ apiKey: openaiKey });
 
-const handler = async (event) => {
+// === Funzione principale ===
+export const handler = async (event) => {
   console.log("=== Ricevuta chiamata PoetryAI ===");
 
-  // --- Solo POST
+  // Solo POST
   if (event.httpMethod !== 'POST') {
-    console.log("Chiamata non POST!");
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Solo POST consentito' }),
-      headers: { 'Content-Type': 'application/json' }
-    };
+    return jsonResponse(405, { error: 'Solo POST consentito' });
   }
 
-  // --- Auth: JWT obbligatorio
+  // Auth: JWT obbligatorio
   const authHeader = event.headers['authorization'] || event.headers['Authorization'];
   const token = authHeader?.split(' ')[1];
   if (!token) {
-    console.log("Token JWT mancante!");
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: 'Token JWT mancante' }),
-      headers: { 'Content-Type': 'application/json' }
-    };
+    return jsonResponse(401, { error: 'Token JWT mancante' });
   }
 
-  // --- Verifica token
+  // Verifica utente
   let user;
   try {
     const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) {
-      console.log("Errore auth o user mancante:", error);
-      throw error || new Error('Utente non trovato');
-    }
+    if (error || !data.user) throw error || new Error('Utente non trovato');
     user = data.user;
-  } catch (error) {
-    console.log("Errore durante auth:", error);
-    return {
-      statusCode: 403,
-      body: JSON.stringify({ error: 'Accesso non autorizzato', details: error.message }),
-      headers: { 'Content-Type': 'application/json' }
-    };
+  } catch (err) {
+    return jsonResponse(403, { error: 'Accesso non autorizzato', details: err.message });
   }
 
-  // --- Parsing body
+  // Parsing body
   let body;
   try {
     body = JSON.parse(event.body || '{}');
-    console.log("BODY ricevuto:", body);
-  } catch (e) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Formato JSON non valido' }),
-      headers: { 'Content-Type': 'application/json' }
-    };
+  } catch {
+    return jsonResponse(400, { error: 'Formato JSON non valido' });
   }
 
   if (!body.content || typeof body.content !== 'string') {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Il campo "content" è obbligatorio' }),
-      headers: { 'Content-Type': 'application/json' }
-    };
+    return jsonResponse(400, { error: 'Il campo "content" è obbligatorio' });
   }
 
-  // --- Analisi GPT
-  let analisiGPT = {};
+  // Genera analisi GPT
+  let analisiGPT;
+  const mock = generateMockAnalysis(body.content);
+
   try {
-    const prompt = `
+    const prompt = buildPrompt(body.content);
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7
+    });
+
+    analisiGPT = JSON.parse(completion.choices[0].message.content || '{}');
+  } catch (err) {
+    console.error("Errore OpenAI, uso fallback:", err);
+    analisiGPT = mock;
+  }
+
+  // Prepara dati per DB
+  const poemData = {
+    title: body.title || null,
+    content: body.content,
+    author_name: body.author_name || user.user_metadata?.full_name || null,
+    profile_id: user.id,
+    instagram_handle: body.instagram_handle || null,
+    analisi_letteraria: null, // Campo non usato
+    analisi_psicologica: analisiGPT,
+    match_id: body.match_id || null,
+    created_at: new Date().toISOString()
+  };
+
+  // Salva in Supabase
+  try {
+    const { data, error } = await supabase
+      .from('poesie')
+      .insert(poemData)
+      .select('*');
+
+    if (error) throw error;
+
+    console.log("✅ Poesia salvata:", data[0]);
+    return jsonResponse(201, data[0]);
+  } catch (err) {
+    console.error("❌ Errore DB:", err);
+    return jsonResponse(500, { error: 'Errore interno del server', details: err.message });
+  }
+};
+
+// === Utils ===
+function jsonResponse(status, body) {
+  return {
+    statusCode: status,
+    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    }
+  };
+}
+
+function buildPrompt(content) {
+  return `
 Agisci come un "Futurista Strategico" e un analista di sistemi complessi.
 Il tuo compito non è predire il futuro, ma mappare le sue possibilità per fornire un vantaggio decisionale.
 
-Argomento: ${body.content}
+Argomento: ${content}
 
 Proiettalo 20 anni nel futuro e crea un dossier strategico completo in formato JSON con la seguente struttura obbligatoria:
 
@@ -127,73 +160,8 @@ Requisiti:
 - Tono lucido, strategico e privo di sensazionalismo.
 - Usa esempi concreti per illustrare i tuoi punti.
 `;
+}
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7
-    });
-
-    console.log("RISPOSTA OPENAI:", completion.choices[0].message.content);
-
-    try {
-      analisiGPT = JSON.parse(completion.choices[0].message.content || '{}');
-    } catch (jsonErr) {
-      console.log("Errore PARSING risposta OpenAI! Risposta grezza:", completion.choices[0].message.content);
-      analisiGPT = generateMockAnalysis(body.content);
-    }
-
-  } catch (error) {
-    console.log("Errore chiamata OpenAI (usa mock):", error);
-    analisiGPT = generateMockAnalysis(body.content);
-  }
-
-  // --- Prepara dati per Supabase
-  const poemData = {
-    title: body.title || null,
-    content: body.content,
-    author_name: body.author_name || user.user_metadata?.full_name || null,
-    profile_id: user.id,
-    instagram_handle: body.instagram_handle || null,
-    analisi_letteraria: analisiGPT.vettori_di_cambiamento_attuali || generateMockAnalysis(body.content).vettori_di_cambiamento_attuali,
-    analisi_psicologica: analisiGPT || generateMockAnalysis(body.content),
-    match_id: body.match_id || null,
-    created_at: new Date().toISOString()
-  };
-
-  // --- Inserimento in DB
-  try {
-    const { data, error } = await supabase
-      .from('poesie')
-      .insert(poemData)
-      .select('*');
-    if (error) {
-      console.log("Errore salvataggio DB:", error);
-      throw error;
-    }
-    console.log("Poesia SALVATA nel DB!", data);
-    return {
-      statusCode: 201,
-      body: JSON.stringify(data[0]),
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store'
-      }
-    };
-  } catch (error) {
-    console.log("ERRORE FINALE:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: 'Errore interno del server',
-        details: error.message
-      }),
-      headers: { 'Content-Type': 'application/json' }
-    };
-  }
-};
-
-// --- Mock fallback aggiornato
 function generateMockAnalysis(content) {
   return {
     vettori_di_cambiamento_attuali: [
@@ -221,5 +189,3 @@ function generateMockAnalysis(content) {
     }
   };
 }
-
-export { handler };
