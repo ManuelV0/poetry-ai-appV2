@@ -8,13 +8,10 @@ const POESIE_API_URL = '/.netlify/functions/poesie' // Cambia qui se serve path 
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
 
-  let analisiL = poesia.analisi_letteraria
-  let analisiP = poesia.analisi_psicologica
+  let analisi = poesia.analisi_psicologica
   try {
-    if (typeof analisiL === 'string') analisiL = JSON.parse(analisiL)
-    if (typeof analisiP === 'string') analisiP = JSON.parse(analisiP)
+    if (typeof analisi === 'string') analisi = JSON.parse(analisi)
   } catch {}
-  const tonoEmotivo = analisiP?.tono_emotivo || ''
 
   let stato = "Non generato"
   if (audioState === "generato") stato = "Audio generato"
@@ -29,11 +26,6 @@ function PoesiaBox({ poesia, audioState }) {
         <div className="flex-1 pr-4">
           <h2 className="text-xl font-extrabold text-green-700 font-montserrat">{poesia.title || 'Senza titolo'}</h2>
           <p className="text-sm italic text-gray-500 mb-2 font-open-sans">{poesia.author_name || 'Anonimo'}</p>
-          {tonoEmotivo && (
-            <span className="inline-block mb-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-              Tono: {tonoEmotivo}
-            </span>
-          )}
           <p className={`text-gray-900 text-base leading-relaxed font-open-sans ${aperta ? '' : 'line-clamp-3'}`}>
             {poesia.content}
           </p>
@@ -54,64 +46,60 @@ function PoesiaBox({ poesia, audioState }) {
           )}
         </div>
       )}
-      {/* Analisi */}
-      {aperta && (
-        <div className="mt-8 space-y-6">
-          {/* Analisi Letteraria */}
-          <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300 font-open-sans">
+      {/* Analisi Futurista Strategico */}
+      {aperta && analisi && (
+        <div className="mt-8 space-y-6 font-open-sans">
+          {/* Vettori di cambiamento */}
+          <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300">
             <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">
-              Analisi Letteraria
+              Vettori di Cambiamento Attuali
             </h3>
-            {analisiL ? (
-              <>
-                <p className="mb-1">
-                  <strong>Stile letterario:</strong>{' '}
-                  <span className="text-green-700">{analisiL.stile_letterario || 'N/A'}</span>
-                </p>
-                <p className="mb-1 font-semibold">Temi:</p>
-                <ul className="list-disc list-inside ml-6 text-green-600 mb-3">
-                  {(analisiL.temi || []).map((tema, i) => (
-                    <li key={i}>{tema}</li>
-                  ))}
-                </ul>
-                <p className="mb-1">
-                  <strong>Struttura:</strong>{' '}
-                  <span className="text-green-700">{analisiL.struttura || 'N/A'}</span>
-                </p>
-                <p>
-                  <strong>Riferimenti culturali:</strong>{' '}
-                  <span className="text-green-700">{analisiL.riferimenti_culturali || 'N/A'}</span>
-                </p>
-              </>
-            ) : (
-              <p className="italic text-green-400">Nessuna analisi letteraria disponibile.</p>
-            )}
+            <ul className="list-disc list-inside ml-6 text-green-700">
+              {(analisi.vettori_di_cambiamento_attuali || []).map((v, i) => (
+                <li key={i}>{v}</li>
+              ))}
+            </ul>
           </section>
-          {/* Analisi Psicologica */}
-          <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300 font-open-sans">
-            <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
-              Analisi Psicologica
+          {/* Scenario ottimistico */}
+          <section className="bg-blue-50 p-5 rounded shadow-inner border border-blue-300">
+            <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">
+              Scenario Ottimistico
             </h3>
-            {analisiP ? (
-              <>
-                <p className="mb-1 font-semibold">Emozioni:</p>
-                <ul className="list-disc list-inside ml-6 text-indigo-600 mb-3">
-                  {(analisiP.emozioni || []).map((emozione, i) => (
-                    <li key={i}>{emozione}</li>
-                  ))}
-                </ul>
-                <p className="mb-1">
-                  <strong>Stato interno:</strong>{' '}
-                  <span className="text-indigo-700">{analisiP.stato_interno || 'N/A'}</span>
-                </p>
-                <p>
-                  <strong>Visione del mondo:</strong>{' '}
-                  <span className="text-indigo-700">{analisiP.visione_del_mondo || 'N/A'}</span>
-                </p>
-              </>
-            ) : (
-              <p className="italic text-indigo-400">Nessuna analisi psicologica disponibile.</p>
-            )}
+            <p className="text-blue-700">{analisi.scenario_ottimistico || 'N/A'}</p>
+          </section>
+          {/* Scenario pessimistico */}
+          <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
+            <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">
+              Scenario Pessimistico
+            </h3>
+            <p className="text-red-700">{analisi.scenario_pessimistico || 'N/A'}</p>
+          </section>
+          {/* Fattori inattesi */}
+          <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
+            <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">
+              Fattori Inattesi
+            </h3>
+            <p><strong>Positivo (Jolly):</strong> {analisi.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
+            <p><strong>Negativo (Cigno Nero):</strong> {analisi.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
+          </section>
+          {/* Dossier strategico oggi */}
+          <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
+            <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
+              Dossier Strategico per Oggi
+            </h3>
+            <p className="font-semibold">Azioni Preparatorie Immediate:</p>
+            <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
+              {(analisi.dossier_strategico_oggi?.azioni_preparatorie_immediate || []).map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+            <p className="font-semibold">Opportunità Emergenti:</p>
+            <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
+              {(analisi.dossier_strategico_oggi?.opportunita_emergenti || []).map((o, i) => (
+                <li key={i}>{o}</li>
+              ))}
+            </ul>
+            <p><strong>Rischio Esistenziale da Mitigare:</strong> {analisi.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}</p>
           </section>
         </div>
       )}
