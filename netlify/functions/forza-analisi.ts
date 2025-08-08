@@ -2,146 +2,243 @@ import { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 
-// Setup Supabase e OpenAI
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+// --- ENV --------------------------------------------------------------------
+const SUPABASE_URL = process.env.SUPABASE_URL!
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY! // SERVER SIDE
+const OPENAI_KEY = process.env.OPENAI_API_KEY!
+
+// --- Supabase & OpenAI ------------------------------------------------------
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
+  auth: { persistSession: false, autoRefreshToken: false },
+  db: { schema: 'public' }
+})
+const openai = new OpenAI({ apiKey: OPENAI_KEY })
+
+// --- CORS -------------------------------------------------------------------
+const ALLOWED_ORIGINS = [
+  'https://theitalianpoetryproject.com',
+  'https://poetry.theitalianpoetryproject.com',
+  'https://widget.theitalianpoetryproject.com',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173'
+]
+
+// =================================================================================
 
 const handler: Handler = async (event) => {
-  // Consente solo POST
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Metodo non consentito. Usa POST.' })
-    }
+  const origin = event.headers.origin || ''
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  const CORS = {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+    Vary: 'Origin'
   }
 
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS, body: '' }
+  }
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Usa POST' }) }
+  }
+
+  // Parse body
+  let body: {
+    id?: string
+    content?: string
+    title?: string
+    author?: string
+    focus?: string
+  }
   try {
-    const body = JSON.parse(event.body || '{}')
-    const { id, content } = body
+    body = JSON.parse(event.body || '{}')
+  } catch {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'JSON non valido' }) }
+  }
 
-    if (!id || !content) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'ID e content sono obbligatori' })
+  const poemId = body.id
+  const content = (body.content || '').trim()
+  const title = (body.title || '').trim()
+  const author = (body.author || '').trim()
+  const focus = (body.focus || '').trim()
+
+  if (!poemId || !content) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Campi obbligatori: id, content' }) }
+  }
+
+  // Prompt combinato (analisi letteraria accademica + analisi psicologica “brutale”)
+  const titoloAutore = title && author
+    ? `"${title}" di ${author}`
+    : (title ? `"${title}"` : (author ? `Testo di ${author}` : 'Testo'))
+
+  const focusLine = focus
+    ? `Se l'opera è lunga, concentrati su: ${focus}.`
+    : 'Se l\'opera è lunga, concentrati su un personaggio, capitolo o tema centrale più rilevante.'
+
+  const prompt = `
+DEVI RISPONDERE **SOLO** CON UN JSON VALIDO avente questa struttura:
+
+{
+  "analisi_letteraria": {
+    "analisi_tematica_filosofica": {
+      "temi_principali": [
+        {
+          "tema": "...",
+          "citazioni": ["...", "...", "..."],
+          "commento": "..."
+        }
+      ],
+      "temi_secondari": [
+        {
+          "tema": "...",
+          "citazioni": ["..."],
+          "commento": "..."
+        }
+      ],
+      "tesi_filosofica": "Sintesi della visione del mondo/tesi dell'autore con riferimenti testuali"
+    },
+    "analisi_personaggi_psicologica": {
+      "protagonista": {
+        "nome": "se noto o 'io lirico'",
+        "arco": "evoluzione/assenza",
+        "motivazioni_conflitti": "conflitti interni, desideri consci/inconsci",
+        "meccanismi_difesa": ["...", "..."],
+        "note": "come spinge i temi"
+      },
+      "secondario_significativo": {
+        "nome": "se presente",
+        "arco": "…",
+        "motivazioni_conflitti": "…",
+        "meccanismi_difesa": ["..."],
+        "note": "interazione col protagonista"
       }
+    },
+    "analisi_stilistica_narratologica": {
+      "stile": { "lessico": "...", "sintassi": "...", "ritmo": "..." },
+      "narratore": "prima/terza, onnisciente, inaffidabile…",
+      "tempo_narrativo": "linearità/flashback/prolessi…",
+      "dispositivi_retorici": [
+        { "tipo": "metafora/ironia/monologo interiore…", "effetto": "..." },
+        { "tipo": "...", "effetto": "..." },
+        { "tipo": "...", "effetto": "..." }
+      ]
+    },
+    "contesto_storico_biografico": {
+      "contesto": "inquadramento storico-culturale",
+      "riflessi_nel_testo": "come il contesto entra nell'opera",
+      "tracce_biografiche_pertinenti": "collegamenti non riduzionisti"
+    },
+    "sintesi_critica_conclusione": {
+      "sintesi": "come stile, personaggi e contesto producono il significato complessivo",
+      "valutazione_finale": "originalità e rilevanza nel canone"
     }
+  },
+  "analisi_psicologica": {
+    "fallacie_logiche": [
+      { "nome": "...", "evidenze": ["citazione/e dal testo"] }
+    ],
+    "bias_cognitivi": [
+      { "nome": "...", "evidenze": ["citazione/e dal testo"] }
+    ],
+    "meccanismi_di_difesa": [
+      { "nome": "razionalizzazione/proiezione/…", "evidenze": ["citazione/e"] }
+    ],
+    "schemi_autosabotanti": [
+      { "nome": "...", "evidenze": ["citazione/e"] }
+    ],
+    "nota_metodologica": "come hai inferito le categorie solo da materiale testuale"
+  }
+}
 
-    const prompt = buildPrompt(content)
+REGOLE:
+- NIENTE testo fuori dal JSON.
+- Le CITAZIONI devono provenire dal testo dato (brevi estratti).
+- Se una sezione non è applicabile, restituisci array vuoti/campi stringa vuoti, NON inventare.
 
+CONTESTO DI LAVORO (per la parte letteraria):
+Agisci come un critico letterario accademico con esperienza in analisi strutturalista, critica psicanalitica e contestualizzazione storica. Il tuo obiettivo è produrre un'analisi approfondita e multi-livello del seguente testo: ${titoloAutore}. ${focusLine}
+
+TESTO DA ANALIZZARE:
+${content}
+`.trim()
+
+  // Chiamata OpenAI
+  let result: any
+  try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7
+      temperature: 0.4
     })
-
-    let analisiGPT
-    try {
-      analisiGPT = JSON.parse(completion.choices[0].message.content || '{}')
-    } catch {
-      analisiGPT = generateMockAnalysis(content)
-    }
-
-    const { error } = await supabase
-      .from('poesie')
-      .update({
-        analisi_letteraria: null,
-        analisi_psicologica: analisiGPT
-      })
-      .eq('id', id)
-
-    if (error) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: error.message })
+    const raw = completion.choices?.[0]?.message?.content || '{}'
+    result = JSON.parse(raw)
+  } catch (err) {
+    console.error('OpenAI error:', err)
+    result = {
+      analisi_letteraria: {
+        analisi_tematica_filosofica: {
+          temi_principali: [],
+          temi_secondari: [],
+          tesi_filosofica: ""
+        },
+        analisi_personaggi_psicologica: {
+          protagonista: { nome: "", arco: "", motivazioni_conflitti: "", meccanismi_difesa: [], note: "" },
+          secondario_significativo: { nome: "", arco: "", motivazioni_conflitti: "", meccanismi_difesa: [], note: "" }
+        },
+        analisi_stilistica_narratologica: {
+          stile: { lessico: "", sintassi: "", ritmo: "" },
+          narratore: "",
+          tempo_narrativo: "",
+          dispositivi_retorici: []
+        },
+        contesto_storico_biografico: {
+          contesto: "",
+          riflessi_nel_testo: "",
+          tracce_biografiche_pertinenti: ""
+        },
+        sintesi_critica_conclusione: {
+          sintesi: "",
+          valutazione_finale: ""
+        }
+      },
+      analisi_psicologica: {
+        fallacie_logiche: [],
+        bias_cognitivi: [],
+        meccanismi_di_difesa: [],
+        schemi_autosabotanti: [],
+        nota_metodologica: "Fallback per indisponibilità del modello."
       }
     }
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Analisi generata con successo', analisi: analisiGPT })
-    }
-
-  } catch (err: any) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message || 'Errore sconosciuto' })
-    }
   }
-}
 
-// === Prompt per OpenAI ===
-function buildPrompt(content: string) {
-  return `
-Agisci come un "Futurista Strategico" e un analista di sistemi complessi.
-Il tuo compito non è predire il futuro, ma mappare le sue possibilità per fornire un vantaggio decisionale.
+  const analisi_letteraria = result?.analisi_letteraria ?? null
+  const analisi_psicologica = result?.analisi_psicologica ?? null
 
-Argomento: ${content}
+  // Update DB
+  const { error: updErr } = await supabase
+    .from('poesie')
+    .update({ analisi_letteraria, analisi_psicologica })
+    .eq('id', poemId)
 
-Proiettalo 20 anni nel futuro e crea un dossier strategico completo in formato JSON con la seguente struttura obbligatoria:
-
-{
-  "vettori_di_cambiamento_attuali": [
-    "Descrizione del vettore 1",
-    "Descrizione del vettore 2",
-    "Descrizione del vettore 3"
-  ],
-  "scenario_ottimistico": "Descrizione dettagliata dell'utopia plausibile",
-  "scenario_pessimistico": "Descrizione dettagliata della distopia plausibile",
-  "fattori_inattesi": {
-    "positivo_jolly": "Evento positivo imprevisto",
-    "negativo_cigno_nero": "Evento negativo imprevisto"
-  },
-  "dossier_strategico_oggi": {
-    "azioni_preparatorie_immediate": [
-      "Azione 1",
-      "Azione 2",
-      "Azione 3"
-    ],
-    "opportunita_emergenti": [
-      "Opportunità 1",
-      "Opportunità 2"
-    ],
-    "rischio_esistenziale_da_mitigare": "Descrizione del rischio"
+  if (updErr) {
+    console.error('Supabase update error:', updErr)
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: updErr.message }) }
   }
-}
 
-Requisiti:
-- Pensa in modo sistemico.
-- Tono lucido, strategico e privo di sensazionalismo.
-- Usa esempi concreti.
-`
-}
-
-// === Mock fallback ===
-function generateMockAnalysis(content: string) {
   return {
-    vettori_di_cambiamento_attuali: [
-      "Avanzamenti tecnologici generici",
-      "Cambiamenti sociali globali",
-      "Tendenze economiche emergenti"
-    ],
-    scenario_ottimistico: "Scenario positivo con cooperazione globale e uso etico delle tecnologie.",
-    scenario_pessimistico: "Scenario negativo con crisi geopolitiche e tecnologie usate male.",
-    fattori_inattesi: {
-      positivo_jolly: "Scoperta scientifica rivoluzionaria.",
-      negativo_cigno_nero: "Evento catastrofico imprevisto."
-    },
-    dossier_strategico_oggi: {
-      azioni_preparatorie_immediate: [
-        "Investire in formazione continua",
-        "Diversificare le fonti di reddito",
-        "Creare reti di collaborazione"
-      ],
-      opportunita_emergenti: [
-        "Tecnologie sostenibili",
-        "Mercati legati all’adattamento climatico"
-      ],
-      rischio_esistenziale_da_mitigare: "Collasso ecologico globale"
-    }
+    statusCode: 200,
+    headers: CORS,
+    body: JSON.stringify({
+      ok: true,
+      message: 'Analisi letteraria (5 sezioni) + psicologica salvate',
+      analisi_salvata: {
+        has_letteraria: !!analisi_letteraria,
+        has_psicologica: !!analisi_psicologica
+      }
+    })
   }
 }
 
