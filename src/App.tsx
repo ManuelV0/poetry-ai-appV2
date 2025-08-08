@@ -9,29 +9,75 @@ const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/funct
 const POESIE_API_URL = '/.netlify/functions/poesie'
 const ANALISI_API_URL = '/.netlify/functions/forza-analisi'
 
+type AnalisiPsicologica = any // struttura mista: può contenere sia "futurista strategico" che "psicologica dettagliata"
+type AnalisiLetteraria = any
+
+function isNonEmptyObject(v: any) {
+  return v && typeof v === 'object' && Object.keys(v).length > 0
+}
+
+function SafeList({ items }: { items?: any[] }) {
+  if (!Array.isArray(items) || items.length === 0) return <p className="text-gray-500 italic">N/A</p>
+  return (
+    <ul className="list-disc list-inside ml-6">
+      {items.map((x, i) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}
+    </ul>
+  )
+}
+
+function CitazioniList({ items }: { items?: string[] }) {
+  if (!Array.isArray(items) || items.length === 0) return <p className="text-gray-500 italic">Nessuna citazione</p>
+  return (
+    <ul className="list-disc list-inside ml-6">
+      {items.map((c, i) => (
+        <li key={i}>
+          <span className="block whitespace-pre-wrap">«{c}»</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
-  const [analisi, setAnalisi] = useState(() => {
+
+  // Stato analisi: letteraria + psicologica
+  const [analisiPsico, setAnalisiPsico] = useState<AnalisiPsicologica | null>(() => {
     try {
       const raw = poesia.analisi_psicologica
       if (!raw) return null
       const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-      return obj && typeof obj === 'object' && Object.keys(obj).length > 0 ? obj : null
+      return isNonEmptyObject(obj) ? obj : null
     } catch {
       return null
     }
   })
 
-  const [analisiStatus, setAnalisiStatus] = useState<'idle'|'loading'|'success'|'error'>(analisi ? 'success' : 'idle')
+  const [analisiLett, setAnalisiLett] = useState<AnalisiLetteraria | null>(() => {
+    try {
+      const raw = poesia.analisi_letteraria
+      if (!raw) return null
+      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+      return isNonEmptyObject(obj) ? obj : null
+    } catch {
+      return null
+    }
+  })
+
+  const [analisiStatus, setAnalisiStatus] = useState<'idle'|'loading'|'success'|'error'>(
+    analisiPsico || analisiLett ? 'success' : 'idle'
+  )
   const [analisiError, setAnalisiError] = useState<string | null>(null)
   const generazioneInCorsoRef = useRef(false)
 
+  // AUDIO: etichetta stato
   let statoAudio = 'Non generato'
   if (audioState === 'generato') statoAudio = 'Audio generato'
   if (audioState === 'in_corso') statoAudio = 'Generazione in corso...'
 
+  // Se apro la card e manca analisi, chiedo al backend di generarla
   useEffect(() => {
-    const mancaAnalisi = !analisi || Object.keys(analisi || {}).length === 0
+    const mancaAnalisi = !(analisiPsico || analisiLett)
     if (!aperta || !mancaAnalisi || generazioneInCorsoRef.current) return
 
     const genera = async () => {
@@ -39,35 +85,40 @@ function PoesiaBox({ poesia, audioState }) {
       setAnalisiStatus('loading')
       setAnalisiError(null)
       try {
+        // 1) genera/forza analisi
         const res = await fetch(ANALISI_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: poesia.id, content: poesia.content })
         })
-
         if (!res.ok) {
           const t = await res.text().catch(() => '')
           throw new Error(t || `HTTP ${res.status}`)
         }
 
+        // 2) ricarica la poesia con i campi analisi aggiornati
         const { data, error } = await supabase
           .from('poesie')
-          .select('analisi_psicologica')
+          .select('analisi_letteraria, analisi_psicologica')
           .eq('id', poesia.id)
           .single()
 
         if (error) throw error
 
-        let nuovaAnalisi = data?.analisi_psicologica ?? null
-        try {
-          if (typeof nuovaAnalisi === 'string') nuovaAnalisi = JSON.parse(nuovaAnalisi)
-        } catch {}
+        let nuovaPsico = data?.analisi_psicologica ?? null
+        let nuovaLett = data?.analisi_letteraria ?? null
+        try { if (typeof nuovaPsico === 'string') nuovaPsico = JSON.parse(nuovaPsico) } catch {}
+        try { if (typeof nuovaLett === 'string') nuovaLett = JSON.parse(nuovaLett) } catch {}
 
-        if (!nuovaAnalisi || typeof nuovaAnalisi !== 'object' || Object.keys(nuovaAnalisi).length === 0) {
-          throw new Error('Analisi vuota o non valida')
+        const okPsico = isNonEmptyObject(nuovaPsico)
+        const okLett = isNonEmptyObject(nuovaLett)
+
+        if (!okPsico && !okLett) {
+          throw new Error('Analisi assenti o non valide')
         }
 
-        setAnalisi(nuovaAnalisi)
+        setAnalisiPsico(okPsico ? nuovaPsico : null)
+        setAnalisiLett(okLett ? nuovaLett : null)
         setAnalisiStatus('success')
       } catch (err) {
         setAnalisiStatus('error')
@@ -78,10 +129,287 @@ function PoesiaBox({ poesia, audioState }) {
     }
 
     genera()
-  }, [aperta, analisi, poesia.id, poesia.content])
+  }, [aperta, analisiPsico, analisiLett, poesia.id, poesia.content])
+
+  // Blocchi di UI
+  const renderAnalisiFuturistaIfAny = () => {
+    // Se la psicologica ha ancora la vecchia struttura “futurista strategico”, mostriamola
+    if (!analisiPsico) return null
+    const a = analisiPsico
+    const hasFuturista =
+      Array.isArray(a?.vettori_di_cambiamento_attuali) ||
+      a?.scenario_ottimistico ||
+      a?.scenario_pessimistico ||
+      a?.fattori_inattesi ||
+      a?.dossier_strategico_oggi
+
+    if (!hasFuturista) return null
+
+    return (
+      <>
+        <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300">
+          <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">
+            Vettori di Cambiamento Attuali
+          </h3>
+          <SafeList items={a?.vettori_di_cambiamento_attuali} />
+        </section>
+
+        <section className="bg-blue-50 p-5 rounded shadow-inner border border-blue-300">
+          <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">
+            Scenario Ottimistico
+          </h3>
+          <p className="text-blue-700">{a?.scenario_ottimistico || 'N/A'}</p>
+        </section>
+
+        <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
+          <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">
+            Scenario Pessimistico
+          </h3>
+          <p className="text-red-700">{a?.scenario_pessimistico || 'N/A'}</p>
+        </section>
+
+        <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
+          <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">
+            Fattori Inattesi
+          </h3>
+          <p><strong>Positivo (Jolly):</strong> {a?.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
+          <p><strong>Negativo (Cigno Nero):</strong> {a?.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
+        </section>
+
+        <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
+          <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
+            Dossier Strategico per Oggi
+          </h3>
+
+          <p className="font-semibold">Azioni Preparatorie Immediate:</p>
+          <SafeList items={a?.dossier_strategico_oggi?.azioni_preparatorie_immediate} />
+
+          <p className="font-semibold mt-2">Opportunità Emergenti:</p>
+          <SafeList items={a?.dossier_strategico_oggi?.opportunita_emergenti} />
+
+          <p className="mt-2">
+            <strong>Rischio Esistenziale da Mitigare:</strong>{' '}
+            {a?.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}
+          </p>
+        </section>
+      </>
+    )
+  }
+
+  const renderAnalisiPsicologicaDettagliata = () => {
+    if (!analisiPsico) return null
+    const a = analisiPsico
+
+    const hasDetailed =
+      Array.isArray(a?.fallacie_logiche) ||
+      Array.isArray(a?.bias_cognitivi) ||
+      Array.isArray(a?.meccanismi_di_difesa) ||
+      Array.isArray(a?.schemi_autosabotanti)
+
+    if (!hasDetailed) return null
+
+    return (
+      <>
+        <section className="bg-rose-50 p-5 rounded shadow-inner border border-rose-300">
+          <h3 className="font-bold text-rose-800 mb-3 border-b border-rose-400 pb-2 text-lg font-montserrat">
+            Analisi Psicologica – Fallacie Logiche
+          </h3>
+          <SafeList items={a?.fallacie_logiche} />
+        </section>
+
+        <section className="bg-amber-50 p-5 rounded shadow-inner border border-amber-300">
+          <h3 className="font-bold text-amber-800 mb-3 border-b border-amber-400 pb-2 text-lg font-montserrat">
+            Analisi Psicologica – Bias Cognitivi
+          </h3>
+          <SafeList items={a?.bias_cognitivi} />
+        </section>
+
+        <section className="bg-purple-50 p-5 rounded shadow-inner border border-purple-300">
+          <h3 className="font-bold text-purple-800 mb-3 border-b border-purple-400 pb-2 text-lg font-montserrat">
+            Analisi Psicologica – Meccanismi di Difesa
+          </h3>
+          <SafeList items={a?.meccanismi_di_difesa} />
+        </section>
+
+        <section className="bg-sky-50 p-5 rounded shadow-inner border border-sky-300">
+          <h3 className="font-bold text-sky-800 mb-3 border-b border-sky-400 pb-2 text-lg font-montserrat">
+            Analisi Psicologica – Schemi Autosabotanti
+          </h3>
+          <SafeList items={a?.schemi_autosabotanti} />
+        </section>
+      </>
+    )
+  }
+
+  const renderAnalisiLetteraria = () => {
+    if (!analisiLett) return null
+    const a = analisiLett
+
+    const temi = a?.analisi_tematica_filosofica
+    const stile = a?.analisi_stilistica_narratologica
+    const contesto = a?.contesto_storico_biografico
+    const sintesi = a?.sintesi_critica_conclusione
+
+    const hasAnything =
+      isNonEmptyObject(temi) || isNonEmptyObject(stile) || isNonEmptyObject(contesto) || !!sintesi
+
+    if (!hasAnything) return null
+
+    return (
+      <>
+        {/* 1. Analisi Tematica e Filosofica */}
+        {isNonEmptyObject(temi) && (
+          <section className="bg-emerald-50 p-5 rounded shadow-inner border border-emerald-300">
+            <h3 className="font-bold text-emerald-800 mb-3 border-b border-emerald-400 pb-2 text-lg font-montserrat">
+              Analisi Tematica e Filosofica
+            </h3>
+
+            {/* Temi principali */}
+            {Array.isArray(temi?.temi_principali) && temi.temi_principali.length > 0 && (
+              <div className="mb-4">
+                <h4 className="font-semibold text-emerald-900 mb-2">Temi principali</h4>
+                {temi.temi_principali.map((t, i) => (
+                  <div key={i} className="mb-3">
+                    <p className="font-medium">{t?.tema || 'Tema'}</p>
+                    {t?.spiegazione && <p className="text-emerald-800">{t.spiegazione}</p>}
+                    {Array.isArray(t?.citazioni) && (
+                      <div className="mt-1">
+                        <p className="text-sm font-semibold">Citazioni:</p>
+                        <CitazioniList items={t.citazioni} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Temi secondari */}
+            {Array.isArray(temi?.temi_secondari) && temi.temi_secondari.length > 0 && (
+              <div className="mb-2">
+                <h4 className="font-semibold text-emerald-900 mb-2">Temi secondari</h4>
+                <SafeList items={temi.temi_secondari} />
+              </div>
+            )}
+
+            {/* Tesi filosofica */}
+            {temi?.tesi_filosofica && (
+              <div className="mt-2">
+                <h4 className="font-semibold text-emerald-900 mb-1">Tesi filosofica</h4>
+                <p className="text-emerald-800">{temi.tesi_filosofica}</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 2 & 3. Personaggi + Stilistica/Narratologia */}
+        {isNonEmptyObject(stile) && (
+          <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
+            <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
+              Analisi Stilistica e Narratologica
+            </h3>
+
+            {/* Stile */}
+            {stile?.stile && (
+              <>
+                <h4 className="font-semibold text-indigo-900 mb-1">Stile di scrittura</h4>
+                <p className="text-indigo-800 mb-3">{stile.stile}</p>
+              </>
+            )}
+
+            {/* Narratore e tempo */}
+            {(stile?.narratore || stile?.tempo_narrativo) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {stile?.narratore && (
+                  <div>
+                    <h5 className="font-semibold text-indigo-900 mb-1">Narratore</h5>
+                    <p className="text-indigo-800">{stile.narratore}</p>
+                  </div>
+                )}
+                {stile?.tempo_narrativo && (
+                  <div>
+                    <h5 className="font-semibold text-indigo-900 mb-1">Tempo narrativo</h5>
+                    <p className="text-indigo-800">{stile.tempo_narrativo}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Dispositivi retorici */}
+            {Array.isArray(stile?.dispositivi_retorici) && stile.dispositivi_retorici.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-semibold text-indigo-900 mb-2">Figure/Dispositivi retorici</h4>
+                <ul className="list-disc list-inside ml-6 text-indigo-800">
+                  {stile.dispositivi_retorici.map((d, i) => (
+                    <li key={i}>
+                      <span className="font-medium">{d?.nome || 'Dispositivo'}</span>
+                      {d?.effetto && <span>: {d.effetto}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Personaggi (se lo hai messo qui dentro) */}
+            {Array.isArray(stile?.personaggi) && stile.personaggi.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-semibold text-indigo-900 mb-2">Personaggi e Analisi Psicologica</h4>
+                {stile.personaggi.map((p, i) => (
+                  <div key={i} className="mb-3">
+                    <p className="font-medium">{p?.nome || 'Personaggio'}</p>
+                    {p?.arco && <p className="text-indigo-800">Arco: {p.arco}</p>}
+                    {p?.motivazioni && (
+                      <p className="text-indigo-800">Motivazioni: {p.motivazioni}</p>
+                    )}
+                    {p?.meccanismi_di_difesa && (
+                      <>
+                        <p className="text-sm font-semibold mt-1">Meccanismi di difesa:</p>
+                        <SafeList items={p.meccanismi_di_difesa} />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 4. Contesto Storico e Biografico */}
+        {isNonEmptyObject(contesto) && (
+          <section className="bg-amber-50 p-5 rounded shadow-inner border border-amber-300">
+            <h3 className="font-bold text-amber-800 mb-3 border-b border-amber-400 pb-2 text-lg font-montserrat">
+              Contesto Storico e Biografico
+            </h3>
+            {contesto?.storico && (
+              <>
+                <h4 className="font-semibold text-amber-900 mb-1">Contesto storico-culturale</h4>
+                <p className="text-amber-800 mb-2">{contesto.storico}</p>
+              </>
+            )}
+            {contesto?.biografico && (
+              <>
+                <h4 className="font-semibold text-amber-900 mb-1">Note biografiche rilevanti</h4>
+                <p className="text-amber-800">{contesto.biografico}</p>
+              </>
+            )}
+          </section>
+        )}
+
+        {/* 5. Sintesi Critica e Conclusione */}
+        {sintesi && (
+          <section className="bg-slate-50 p-5 rounded shadow-inner border border-slate-300">
+            <h3 className="font-bold text-slate-800 mb-3 border-b border-slate-400 pb-2 text-lg font-montserrat">
+              Sintesi Critica e Conclusione
+            </h3>
+            <p className="text-slate-800 whitespace-pre-wrap">{sintesi}</p>
+          </section>
+        )}
+      </>
+    )
+  }
 
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
+      {/* HEADER CARD */}
       <div
         className="cursor-pointer flex justify-between items-start"
         onClick={() => setAperta(v => !v)}
@@ -89,8 +417,12 @@ function PoesiaBox({ poesia, audioState }) {
         aria-expanded={aperta}
       >
         <div className="flex-1 pr-4">
-          <h2 className="text-xl font-extrabold text-green-700 font-montserrat">{poesia.title || 'Senza titolo'}</h2>
-          <p className="text-sm italic text-gray-500 mb-2 font-open-sans">{poesia.author_name || 'Anonimo'}</p>
+          <h2 className="text-xl font-extrabold text-green-700 font-montserrat">
+            {poesia.title || 'Senza titolo'}
+          </h2>
+          <p className="text-sm italic text-gray-500 mb-2 font-open-sans">
+            {poesia.author_name || 'Anonimo'}
+          </p>
           <p className={`text-gray-900 text-base leading-relaxed font-open-sans ${aperta ? '' : 'line-clamp-3'}`}>
             {poesia.content}
           </p>
@@ -126,49 +458,22 @@ function PoesiaBox({ poesia, audioState }) {
               {analisiError}
             </div>
           )}
-          {analisi && analisiStatus === 'success' && (
+          {(analisiPsico || analisiLett) && analisiStatus === 'success' && (
             <>
-              <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300">
-                <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">Vettori di Cambiamento Attuali</h3>
-                <ul className="list-disc list-inside ml-6 text-green-700">
-                  {(analisi.vettori_di_cambiamento_attuali || []).map((v, i) => (
-                    <li key={i}>{v}</li>
-                  ))}
-                </ul>
-              </section>
-              <section className="bg-blue-50 p-5 rounded shadow-inner border border-blue-300">
-                <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">Scenario Ottimistico</h3>
-                <p className="text-blue-700">{analisi.scenario_ottimistico || 'N/A'}</p>
-              </section>
-              <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
-                <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">Scenario Pessimistico</h3>
-                <p className="text-red-700">{analisi.scenario_pessimistico || 'N/A'}</p>
-              </section>
-              <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
-                <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">Fattori Inattesi</h3>
-                <p><strong>Positivo (Jolly):</strong> {analisi.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
-                <p><strong>Negativo (Cigno Nero):</strong> {analisi.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
-              </section>
-              <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
-                <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">Dossier Strategico per Oggi</h3>
-                <p className="font-semibold">Azioni Preparatorie Immediate:</p>
-                <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
-                  {(analisi.dossier_strategico_oggi?.azioni_preparatorie_immediate || []).map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
-                <p className="font-semibold">Opportunità Emergenti:</p>
-                <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
-                  {(analisi.dossier_strategico_oggi?.opportunita_emergenti || []).map((o, i) => (
-                    <li key={i}>{o}</li>
-                  ))}
-                </ul>
-                <p><strong>Rischio Esistenziale da Mitigare:</strong> {analisi.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}</p>
-              </section>
+              {/* Analisi Psicologica Dettagliata (fallacie/bias/difese/autosabotaggi) */}
+              {renderAnalisiPsicologicaDettagliata()}
+
+              {/* Analisi Letteraria (temi/citazioni, narratore, stile, contesto, sintesi) */}
+              {renderAnalisiLetteraria()}
+
+              {/* Eventuale blocco “Futurista Strategico” se presente nella psicologica */}
+              {renderAnalisiFuturistaIfAny()}
             </>
           )}
-          {!analisi && analisiStatus === 'idle' && (
-            <div className="text-gray-500 italic text-sm">Analisi non disponibile per questa poesia.</div>
+          {!analisiPsico && !analisiLett && analisiStatus === 'idle' && (
+            <div className="text-gray-500 italic text-sm">
+              Analisi non disponibile per questa poesia.
+            </div>
           )}
         </div>
       )}
@@ -177,13 +482,14 @@ function PoesiaBox({ poesia, audioState }) {
 }
 
 export default function App() {
-  const [poesie, setPoesie] = useState([])
-  const [audioStatus, setAudioStatus] = useState({})
+  const [poesie, setPoesie] = useState<any[]>([])
+  const [audioStatus, setAudioStatus] = useState<Record<string, 'non_generato'|'in_corso'|'generato'>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const lastGenRef = useRef(0)
-  const genQueueRef = useRef([])
+  const genQueueRef = useRef<string[]>([])
 
+  // Carica poesie dalla function
   const fetchPoesie = async () => {
     try {
       const res = await fetch(POESIE_API_URL, { cache: 'no-store' })
@@ -201,16 +507,19 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  // Stato audio derivato
   useEffect(() => {
-    const next = {}
+    const next: Record<string, 'non_generato'|'in_corso'|'generato'> = {}
     for (const p of poesie) {
       if (p.audio_url) next[p.id] = 'generato'
       else if (audioStatus[p.id] === 'in_corso') next[p.id] = 'in_corso'
       else next[p.id] = 'non_generato'
     }
     setAudioStatus(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie])
 
+  // Coda: genera UN audio ogni 2 minuti
   useEffect(() => {
     const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== 'in_corso')
     if (daGenerare.length === 0) return
@@ -219,7 +528,7 @@ export default function App() {
 
     const tryGenerate = async () => {
       const now = Date.now()
-      if (now - lastGenRef.current < 2 * 60 * 1000) return
+      if (now - lastGenRef.current < 2 * 60 * 1000) return // 2 minuti
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
@@ -256,10 +565,12 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(tryGenerate, 5000)
+    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie, audioStatus])
 
+  // Filtri ricerca
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -272,6 +583,7 @@ export default function App() {
         TheItalianPoetryProject.com
       </h1>
 
+      {/* Search */}
       <div className="mb-8 poetry-search-bar">
         <input
           type="search"
@@ -284,6 +596,7 @@ export default function App() {
         />
       </div>
 
+      {/* Stato lista */}
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
 
       <div className="poesie-list" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -297,7 +610,9 @@ export default function App() {
           ))
         ) : (
           !loading && (
-            <p className="text-center text-gray-400 mt-12 text-lg">Nessuna poesia trovata.</p>
+            <p className="text-center text-gray-400 mt-12 text-lg">
+              Nessuna poesia trovata.
+            </p>
           )
         )}
       </div>
