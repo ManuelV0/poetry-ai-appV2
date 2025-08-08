@@ -10,78 +10,65 @@ const supabase = createClient(
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
 const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'GET') {
+  // Consente solo POST
+  if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      body: JSON.stringify({ error: 'Metodo non consentito. Usa GET.' })
+      body: JSON.stringify({ error: 'Metodo non consentito. Usa POST.' })
     }
   }
 
   try {
-    // Recupera max 5 poesie senza analisi
-    const { data: poesie, error } = await supabase
-      .from('poesie')
-      .select('id, title, content')
-      .is('analisi_psicologica', null)
-      .limit(5)
+    const body = JSON.parse(event.body || '{}')
+    const { id, content } = body
 
-    if (error) throw error
-    if (!poesie?.length) {
+    if (!id || !content) {
       return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Nessuna poesia da analizzare' })
+        statusCode: 400,
+        body: JSON.stringify({ error: 'ID e content sono obbligatori' })
       }
     }
 
-    let count = 0
+    const prompt = buildPrompt(content)
 
-    for (const poesia of poesie) {
-      try {
-        const prompt = buildPrompt(poesia.content)
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7
+    })
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          response_format: { type: 'json_object' },
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7
-        })
+    let analisiGPT
+    try {
+      analisiGPT = JSON.parse(completion.choices[0].message.content || '{}')
+    } catch {
+      analisiGPT = generateMockAnalysis(content)
+    }
 
-        let analisiGPT
-        try {
-          analisiGPT = JSON.parse(completion.choices[0].message.content || '{}')
-        } catch {
-          analisiGPT = generateMockAnalysis(poesia.content)
-        }
+    const { error } = await supabase
+      .from('poesie')
+      .update({
+        analisi_letteraria: null,
+        analisi_psicologica: analisiGPT
+      })
+      .eq('id', id)
 
-        const { error: updError } = await supabase
-          .from('poesie')
-          .update({
-            analisi_letteraria: null,
-            analisi_psicologica: analisiGPT
-          })
-          .eq('id', poesia.id)
-
-        if (updError) {
-          console.error(`Errore aggiornamento poesia ${poesia.id}`, updError)
-        } else {
-          count++
-          console.log(`✅ Analisi generata per poesia ${poesia.id}`)
-        }
-
-      } catch (err) {
-        console.error(`❌ Errore su poesia ${poesia.id}:`, err)
+    if (error) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: error.message })
       }
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: `Analizzate ${count} poesie.` })
+      body: JSON.stringify({ message: 'Analisi generata con successo', analisi: analisiGPT })
     }
 
   } catch (err: any) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: err.message || 'Errore sconosciuto' })
     }
   }
 }
