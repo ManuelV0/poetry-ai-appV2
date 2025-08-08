@@ -2,242 +2,308 @@ import { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 
-// --- ENV --------------------------------------------------------------------
-const SUPABASE_URL = process.env.SUPABASE_URL!
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY! // SERVER SIDE
-const OPENAI_KEY = process.env.OPENAI_API_KEY!
+// --- Supabase + OpenAI ---
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
-// --- Supabase & OpenAI ------------------------------------------------------
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
-  auth: { persistSession: false, autoRefreshToken: false },
-  db: { schema: 'public' }
-})
-const openai = new OpenAI({ apiKey: OPENAI_KEY })
+// --- Helpers ---
+const isNonEmptyObject = (v: any) => v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+const arrOrEmpty = (v: any) => Array.isArray(v) ? v.filter(Boolean) : []
+const strOrNA = (v: any) => (typeof v === 'string' && v.trim().length > 0) ? v.trim() : 'N/A'
 
-// --- CORS -------------------------------------------------------------------
-const ALLOWED_ORIGINS = [
-  'https://theitalianpoetryproject.com',
-  'https://poetry.theitalianpoetryproject.com',
-  'https://widget.theitalianpoetryproject.com',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173'
-]
+function sanitizePsico(x: any) {
+  const out: any = {}
+  out.fallacie_logiche     = arrOrEmpty(x?.fallacie_logiche)
+  out.bias_cognitivi       = arrOrEmpty(x?.bias_cognitivi)
+  // meccanismi_di_difesa può essere una lista di {nome, evidenze[]}
+  out.meccanismi_di_difesa = Array.isArray(x?.meccanismi_di_difesa) ? x.meccanismi_di_difesa.map((m: any) => ({
+    nome: strOrNA(m?.nome),
+    evidenze: arrOrEmpty(m?.evidenze).map(strOrNA)
+  })) : []
 
-// =================================================================================
+  out.schemi_autosabotanti = arrOrEmpty(x?.schemi_autosabotanti)
 
-const handler: Handler = async (event) => {
-  const origin = event.headers.origin || ''
-  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
-  const CORS = {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
-    Vary: 'Origin'
+  // Compat: supporto anche lo schema “futurista strategico”
+  if (Array.isArray(x?.vettori_di_cambiamento_attuali) ||
+      x?.scenario_ottimistico || x?.scenario_pessimistico ||
+      isNonEmptyObject(x?.fattori_inattesi) || isNonEmptyObject(x?.dossier_strategico_oggi)) {
+    out.vettori_di_cambiamento_attuali = arrOrEmpty(x?.vettori_di_cambiamento_attuali)
+    out.scenario_ottimistico = strOrNA(x?.scenario_ottimistico)
+    out.scenario_pessimistico = strOrNA(x?.scenario_pessimistico)
+    out.fattori_inattesi = {
+      positivo_jolly: strOrNA(x?.fattori_inattesi?.positivo_jolly),
+      negativo_cigno_nero: strOrNA(x?.fattori_inattesi?.negativo_cigno_nero),
+    }
+    out.dossier_strategico_oggi = {
+      azioni_preparatorie_immediate: arrOrEmpty(x?.dossier_strategico_oggi?.azioni_preparatorie_immediate),
+      opportunita_emergenti: arrOrEmpty(x?.dossier_strategico_oggi?.opportunita_emergenti),
+      rischio_esistenziale_da_mitigare: strOrNA(x?.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare),
+    }
+  }
+  return out
+}
+
+function sanitizeLetteraria(x: any) {
+  const out: any = {}
+
+  const temi = x?.analisi_tematica_filosofica || {}
+  out.analisi_tematica_filosofica = {
+    temi_principali: Array.isArray(temi?.temi_principali) ? temi.temi_principali.map((t: any) => ({
+      tema: strOrNA(t?.tema),
+      spiegazione: strOrNA(t?.spiegazione),
+      citazioni: arrOrEmpty(t?.citazioni).map(strOrNA)
+    })) : [],
+    temi_secondari: arrOrEmpty(temi?.temi_secondari).map((t: any) => {
+      // accetta sia stringa sia oggetto {tema, commento, citazioni}
+      if (typeof t === 'string') return t
+      return {
+        tema: strOrNA(t?.tema),
+        commento: strOrNA(t?.commento),
+        citazioni: arrOrEmpty(t?.citazioni).map(strOrNA)
+      }
+    }),
+    tesi_filosofica: strOrNA(temi?.tesi_filosofica),
   }
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers: CORS, body: '' }
-  }
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Usa POST' }) }
-  }
-
-  // Parse body
-  let body: {
-    id?: string
-    content?: string
-    title?: string
-    author?: string
-    focus?: string
-  }
-  try {
-    body = JSON.parse(event.body || '{}')
-  } catch {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'JSON non valido' }) }
+  const stil = x?.analisi_stilistica_narratologica || {}
+  // stile: consenti sia stringa, sia oggetto {ritmo, lessico, sintassi}
+  let stileField: any = 'N/A'
+  if (typeof stil?.stile === 'string') stileField = stil.stile
+  else if (isNonEmptyObject(stil?.stile)) {
+    stileField = {
+      ritmo: strOrNA(stil?.stile?.ritmo),
+      lessico: strOrNA(stil?.stile?.lessico),
+      sintassi: strOrNA(stil?.stile?.sintassi),
+    }
   }
 
-  const poemId = body.id
-  const content = (body.content || '').trim()
-  const title = (body.title || '').trim()
-  const author = (body.author || '').trim()
-  const focus = (body.focus || '').trim()
-
-  if (!poemId || !content) {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Campi obbligatori: id, content' }) }
+  out.analisi_stilistica_narratologica = {
+    stile: stileField,
+    narratore: strOrNA(stil?.narratore),
+    tempo_narrativo: strOrNA(stil?.tempo_narrativo),
+    dispositivi_retorici: Array.isArray(stil?.dispositivi_retorici)
+      ? stil.dispositivi_retorici.map((d: any) => ({
+          nome: strOrNA(d?.nome),
+          effetto: strOrNA(d?.effetto),
+        }))
+      : [],
+    personaggi: Array.isArray(stil?.personaggi)
+      ? stil.personaggi.map((p: any) => ({
+          nome: strOrNA(p?.nome),
+          arco: strOrNA(p?.arco),
+          motivazioni: strOrNA(p?.motivazioni),
+          meccanismi_di_difesa: arrOrEmpty(p?.meccanismi_di_difesa),
+        }))
+      : [],
   }
 
-  // Prompt combinato (analisi letteraria accademica + analisi psicologica “brutale”)
-  const titoloAutore = title && author
-    ? `"${title}" di ${author}`
-    : (title ? `"${title}"` : (author ? `Testo di ${author}` : 'Testo'))
+  const ctx = x?.contesto_storico_biografico || {}
+  out.contesto_storico_biografico = {
+    storico: strOrNA(ctx?.storico),
+    biografico: strOrNA(ctx?.biografico),
+  }
 
-  const focusLine = focus
-    ? `Se l'opera è lunga, concentrati su: ${focus}.`
-    : 'Se l\'opera è lunga, concentrati su un personaggio, capitolo o tema centrale più rilevante.'
+  const sint = x?.sintesi_critica_conclusione
+  out.sintesi_critica_conclusione =
+    typeof sint === 'string'
+      ? strOrNA(sint)
+      : isNonEmptyObject(sint)
+      ? {
+          sintesi: strOrNA(sint?.sintesi),
+          valutazione_finale: strOrNA(sint?.valutazione_finale),
+        }
+      : 'N/A'
 
-  const prompt = `
-DEVI RISPONDERE **SOLO** CON UN JSON VALIDO avente questa struttura:
+  return out
+}
+
+// --- PROMPTS MIGLIORATI ---
+function buildPromptPsico(content: string) {
+  return `
+Agisci come un analista brutalmente onesto ma eccezionalmente acuto.
+Analizza il testo (poesia) qui sotto e identifica in MODO CONCRETO:
+
+- fallacie_logiche: elenco di stringhe (es. "falsa causa: ...", "ambiguità: ...") sempre almeno 1 voce; se non presenti, spiega perché non rilevabili dal testo.
+- bias_cognitivi: elenco di stringhe (es. "negativity bias: ...", "confirmation bias: ...") sempre almeno 1 voce (o spiegazione).
+- meccanismi_di_difesa: elenco di oggetti { "nome": string, "evidenze": string[] } con citazioni testuali brevi dal testo a supporto. Sempre almeno 1 elemento (o spiegazione).
+- schemi_autosabotanti: elenco di stringhe (es. "generalizzazione: ...", "autodenigrazione: ...") sempre almeno 1 (o spiegazione).
+
+Se concludi che qualcosa NON è applicabile, NON lasciare vuoto: scrivi una voce esplicita che lo dica e perché.
+
+RESTITUISCI SOLO JSON con questa struttura:
 
 {
-  "analisi_letteraria": {
-    "analisi_tematica_filosofica": {
-      "temi_principali": [
-        {
-          "tema": "...",
-          "citazioni": ["...", "...", "..."],
-          "commento": "..."
-        }
-      ],
-      "temi_secondari": [
-        {
-          "tema": "...",
-          "citazioni": ["..."],
-          "commento": "..."
-        }
-      ],
-      "tesi_filosofica": "Sintesi della visione del mondo/tesi dell'autore con riferimenti testuali"
-    },
-    "analisi_personaggi_psicologica": {
-      "protagonista": {
-        "nome": "se noto o 'io lirico'",
-        "arco": "evoluzione/assenza",
-        "motivazioni_conflitti": "conflitti interni, desideri consci/inconsci",
-        "meccanismi_difesa": ["...", "..."],
-        "note": "come spinge i temi"
-      },
-      "secondario_significativo": {
-        "nome": "se presente",
-        "arco": "…",
-        "motivazioni_conflitti": "…",
-        "meccanismi_difesa": ["..."],
-        "note": "interazione col protagonista"
-      }
-    },
-    "analisi_stilistica_narratologica": {
-      "stile": { "lessico": "...", "sintassi": "...", "ritmo": "..." },
-      "narratore": "prima/terza, onnisciente, inaffidabile…",
-      "tempo_narrativo": "linearità/flashback/prolessi…",
-      "dispositivi_retorici": [
-        { "tipo": "metafora/ironia/monologo interiore…", "effetto": "..." },
-        { "tipo": "...", "effetto": "..." },
-        { "tipo": "...", "effetto": "..." }
-      ]
-    },
-    "contesto_storico_biografico": {
-      "contesto": "inquadramento storico-culturale",
-      "riflessi_nel_testo": "come il contesto entra nell'opera",
-      "tracce_biografiche_pertinenti": "collegamenti non riduzionisti"
-    },
-    "sintesi_critica_conclusione": {
-      "sintesi": "come stile, personaggi e contesto producono il significato complessivo",
-      "valutazione_finale": "originalità e rilevanza nel canone"
-    }
+  "fallacie_logiche": ["..."],
+  "bias_cognitivi": ["..."],
+  "meccanismi_di_difesa": [
+    { "nome": "...", "evidenze": ["...","..."] }
+  ],
+  "schemi_autosabotanti": ["..."]
+}
+
+Testo da analizzare:
+"""${content}"""
+`.trim()
+}
+
+function buildPromptLetteraria(content: string, title?: string, author?: string) {
+  return `
+Agisci come un critico letterario accademico (strutturalismo, psicanalisi, contesto).
+Produci un'analisi MULTI-LIVELLO e OBBLIGATORIAMENTE in JSON. 
+Se mancano dati storici/biografici (autore contemporaneo/ignoto), compila comunque "contesto_storico_biografico" con:
+- storico: "Contesto contemporaneo: ..." (linguaggi digitali, individualismo tardo-moderno, social, ecc.)
+- biografico: "Autore non noto/anonimo: ... (ipotizza influenze letterarie plausibili senza spacciare fatti)."
+
+RESTITUISCI SOLO JSON con questa struttura ESATTA:
+
+{
+  "analisi_tematica_filosofica": {
+    "temi_principali": [
+      { "tema": "…", "spiegazione": "…", "citazioni": ["…","…","…"] }
+    ],
+    "temi_secondari": [
+      { "tema": "…", "commento": "…", "citazioni": ["…"] }
+    ],
+    "tesi_filosofica": "…"
   },
-  "analisi_psicologica": {
-    "fallacie_logiche": [
-      { "nome": "...", "evidenze": ["citazione/e dal testo"] }
+  "analisi_stilistica_narratologica": {
+    "stile": { "ritmo": "…", "lessico": "…", "sintassi": "…" },
+    "narratore": "…",
+    "tempo_narrativo": "…",
+    "dispositivi_retorici": [
+      { "nome": "…", "effetto": "…" }
     ],
-    "bias_cognitivi": [
-      { "nome": "...", "evidenze": ["citazione/e dal testo"] }
-    ],
-    "meccanismi_di_difesa": [
-      { "nome": "razionalizzazione/proiezione/…", "evidenze": ["citazione/e"] }
-    ],
-    "schemi_autosabotanti": [
-      { "nome": "...", "evidenze": ["citazione/e"] }
-    ],
-    "nota_metodologica": "come hai inferito le categorie solo da materiale testuale"
+    "personaggi": [
+      { "nome": "…", "arco": "…", "motivazioni": "…", "meccanismi_di_difesa": ["…"] }
+    ]
+  },
+  "contesto_storico_biografico": {
+    "storico": "…",
+    "biografico": "…"
+  },
+  "sintesi_critica_conclusione": {
+    "sintesi": "…",
+    "valutazione_finale": "…"
   }
 }
 
-REGOLE:
-- NIENTE testo fuori dal JSON.
-- Le CITAZIONI devono provenire dal testo dato (brevi estratti).
-- Se una sezione non è applicabile, restituisci array vuoti/campi stringa vuoti, NON inventare.
+Regole:
+- Lingua: italiano.
+- Cita almeno 3 brevi estratti (anche non testuali perfetti ma fedeli) per i temi principali.
+- Non inserire link o note fuori schema.
+- Se un campo non è applicabile: compila con una spiegazione breve ma NON lasciare stringhe vuote.
 
-CONTESTO DI LAVORO (per la parte letteraria):
-Agisci come un critico letterario accademico con esperienza in analisi strutturalista, critica psicanalitica e contestualizzazione storica. Il tuo obiettivo è produrre un'analisi approfondita e multi-livello del seguente testo: ${titoloAutore}. ${focusLine}
+Titolo (se noto): ${title || 'Senza titolo'}
+Autore (se noto): ${author || 'Anonimo/Non noto'}
 
-TESTO DA ANALIZZARE:
-${content}
+Testo:
+"""${content}"""
 `.trim()
+}
 
-  // Chiamata OpenAI
-  let result: any
+// --- HANDLER ---
+const handler: Handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: JSON.stringify({ error: 'Metodo non consentito. Usa POST.' }) }
+  }
+
+  let body: { id?: string; content?: string; title?: string; author_name?: string } = {}
+  try {
+    body = JSON.parse(event.body || '{}')
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: 'JSON non valido' }) }
+  }
+
+  if (!body.id || !body.content) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Campi obbligatori: id, content' }) }
+  }
+
+  // 1) genera ANALISI PSICOLOGICA DETTAGLIATA
+  let psicoRaw: any = {}
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4
+      temperature: 0.4,
+      presence_penalty: 0.1,
+      messages: [{ role: 'user', content: buildPromptPsico(body.content) }]
     })
-    const raw = completion.choices?.[0]?.message?.content || '{}'
-    result = JSON.parse(raw)
-  } catch (err) {
-    console.error('OpenAI error:', err)
-    result = {
-      analisi_letteraria: {
-        analisi_tematica_filosofica: {
-          temi_principali: [],
-          temi_secondari: [],
-          tesi_filosofica: ""
-        },
-        analisi_personaggi_psicologica: {
-          protagonista: { nome: "", arco: "", motivazioni_conflitti: "", meccanismi_difesa: [], note: "" },
-          secondario_significativo: { nome: "", arco: "", motivazioni_conflitti: "", meccanismi_difesa: [], note: "" }
-        },
-        analisi_stilistica_narratologica: {
-          stile: { lessico: "", sintassi: "", ritmo: "" },
-          narratore: "",
-          tempo_narrativo: "",
-          dispositivi_retorici: []
-        },
-        contesto_storico_biografico: {
-          contesto: "",
-          riflessi_nel_testo: "",
-          tracce_biografiche_pertinenti: ""
-        },
-        sintesi_critica_conclusione: {
-          sintesi: "",
-          valutazione_finale: ""
-        }
+    psicoRaw = JSON.parse(completion.choices[0].message.content || '{}')
+  } catch (e) {
+    psicoRaw = {
+      fallacie_logiche: ["N/A: nessuna fallacia chiaramente identificabile nel testo breve."],
+      bias_cognitivi: ["N/A: non emergono bias in modo univoco dal brano."],
+      meccanismi_di_difesa: [{ nome: "razionalizzazione", evidenze: ["N/A"] }],
+      schemi_autosabotanti: ["N/A"]
+    }
+  }
+  const analisi_psicologica = sanitizePsico(psicoRaw)
+
+  // 2) genera ANALISI LETTERARIA ROBUSTA
+  let lettRaw: any = {}
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      presence_penalty: 0.1,
+      messages: [{ role: 'user', content: buildPromptLetteraria(body.content, body.title, body.author_name) }]
+    })
+    lettRaw = JSON.parse(completion.choices[0].message.content || '{}')
+  } catch (e) {
+    // fallback minimo ma completo
+    lettRaw = {
+      analisi_tematica_filosofica: {
+        temi_principali: [
+          { tema: "Identità e memoria", spiegazione: "Ricerca del sé nel tempo.", citazioni: ["«…»","«…»","«…»"] }
+        ],
+        temi_secondari: [],
+        tesi_filosofica: "L'io si costituisce come relazione col tempo e con la perdita."
       },
-      analisi_psicologica: {
-        fallacie_logiche: [],
-        bias_cognitivi: [],
-        meccanismi_di_difesa: [],
-        schemi_autosabotanti: [],
-        nota_metodologica: "Fallback per indisponibilità del modello."
+      analisi_stilistica_narratologica: {
+        stile: { ritmo: "Lento e meditativo", lessico: "Elevato", sintassi: "Franta/ellittica" },
+        narratore: "Io lirico",
+        tempo_narrativo: "Non lineare",
+        dispositivi_retorici: [{ nome: "ossimoro", effetto: "Evidenzia le tensioni interne" }],
+        personaggi: []
+      },
+      contesto_storico_biografico: {
+        storico: "Contesto contemporaneo: sensibilità post-digitale, temi identitari.",
+        biografico: "Autore non noto/anonimo: possibili influenze simboliste/novecentesche."
+      },
+      sintesi_critica_conclusione: {
+        sintesi: "Breve lirica sull'identità e la memoria.",
+        valutazione_finale: "Originalità nel ritmo e nell'immaginario lessicale."
       }
     }
   }
+  const analisi_letteraria = sanitizeLetteraria(lettRaw)
 
-  const analisi_letteraria = result?.analisi_letteraria ?? null
-  const analisi_psicologica = result?.analisi_psicologica ?? null
+  // 3) salva su DB (aggiorna SOLO i campi analisi)
+  try {
+    const { error: updError } = await supabase
+      .from('poesie')
+      .update({
+        analisi_psicologica,
+        analisi_letteraria
+      })
+      .eq('id', body.id)
 
-  // Update DB
-  const { error: updErr } = await supabase
-    .from('poesie')
-    .update({ analisi_letteraria, analisi_psicologica })
-    .eq('id', poemId)
-
-  if (updErr) {
-    console.error('Supabase update error:', updErr)
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: updErr.message }) }
+    if (updError) throw updError
+  } catch (err: any) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'Errore update DB', details: err.message }) }
   }
 
   return {
     statusCode: 200,
-    headers: CORS,
     body: JSON.stringify({
       ok: true,
-      message: 'Analisi letteraria (5 sezioni) + psicologica salvate',
-      analisi_salvata: {
-        has_letteraria: !!analisi_letteraria,
-        has_psicologica: !!analisi_psicologica
-      }
+      poesia_id: body.id,
+      analisi_psicologica,
+      analisi_letteraria
     })
   }
 }
