@@ -1,37 +1,35 @@
 
+// src/App.tsx
+
 import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from './lib/supabaseClient'
 
 // ENDPOINTS
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
 const POESIE_API_URL = '/.netlify/functions/poesie'
-const ANALISI_API_URL = '/.netlify/functions/forza-analisi' // <-- funzione che genera il JSON di analisi
+const ANALISI_API_URL = '/.netlify/functions/forza-analisi'
 
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
-
-  // stato analisi (locale alla card)
   const [analisi, setAnalisi] = useState(() => {
     try {
       const raw = poesia.analisi_psicologica
       if (!raw) return null
       const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-      if (!obj || typeof obj !== 'object' || Object.keys(obj).length === 0) return null
-      return obj
+      return obj && typeof obj === 'object' && Object.keys(obj).length > 0 ? obj : null
     } catch {
       return null
     }
   })
+
   const [analisiStatus, setAnalisiStatus] = useState<'idle'|'loading'|'success'|'error'>(analisi ? 'success' : 'idle')
   const [analisiError, setAnalisiError] = useState<string | null>(null)
-  const generazioneInCorsoRef = useRef(false) // evita doppie chiamate
+  const generazioneInCorsoRef = useRef(false)
 
-  // AUDIO: solo testo etichetta
   let statoAudio = 'Non generato'
   if (audioState === 'generato') statoAudio = 'Audio generato'
   if (audioState === 'in_corso') statoAudio = 'Generazione in corso...'
 
-  // Quando la card viene aperta: se analisi non c’è, generala
   useEffect(() => {
     const mancaAnalisi = !analisi || Object.keys(analisi || {}).length === 0
     if (!aperta || !mancaAnalisi || generazioneInCorsoRef.current) return
@@ -41,7 +39,6 @@ function PoesiaBox({ poesia, audioState }) {
       setAnalisiStatus('loading')
       setAnalisiError(null)
       try {
-        // 1) chiedi al backend di generare l’analisi JSON
         const res = await fetch(ANALISI_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -53,7 +50,6 @@ function PoesiaBox({ poesia, audioState }) {
           throw new Error(t || `HTTP ${res.status}`)
         }
 
-        // 2) ricarica dalla tabella la poesia aggiornata
         const { data, error } = await supabase
           .from('poesie')
           .select('analisi_psicologica')
@@ -65,7 +61,7 @@ function PoesiaBox({ poesia, audioState }) {
         let nuovaAnalisi = data?.analisi_psicologica ?? null
         try {
           if (typeof nuovaAnalisi === 'string') nuovaAnalisi = JSON.parse(nuovaAnalisi)
-        } catch { /* lascia null */ }
+        } catch {}
 
         if (!nuovaAnalisi || typeof nuovaAnalisi !== 'object' || Object.keys(nuovaAnalisi).length === 0) {
           throw new Error('Analisi vuota o non valida')
@@ -82,11 +78,10 @@ function PoesiaBox({ poesia, audioState }) {
     }
 
     genera()
-  }, [aperta, analisi, poesia?.id, poesia?.content])
+  }, [aperta, analisi, poesia.id, poesia.content])
 
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
-      {/* HEADER CARD */}
       <div
         className="cursor-pointer flex justify-between items-start"
         onClick={() => setAperta(v => !v)}
@@ -94,12 +89,8 @@ function PoesiaBox({ poesia, audioState }) {
         aria-expanded={aperta}
       >
         <div className="flex-1 pr-4">
-          <h2 className="text-xl font-extrabold text-green-700 font-montserrat">
-            {poesia.title || 'Senza titolo'}
-          </h2>
-          <p className="text-sm italic text-gray-500 mb-2 font-open-sans">
-            {poesia.author_name || 'Anonimo'}
-          </p>
+          <h2 className="text-xl font-extrabold text-green-700 font-montserrat">{poesia.title || 'Senza titolo'}</h2>
+          <p className="text-sm italic text-gray-500 mb-2 font-open-sans">{poesia.author_name || 'Anonimo'}</p>
           <p className={`text-gray-900 text-base leading-relaxed font-open-sans ${aperta ? '' : 'line-clamp-3'}`}>
             {poesia.content}
           </p>
@@ -122,10 +113,9 @@ function PoesiaBox({ poesia, audioState }) {
         </div>
       )}
 
-      {/* ANALISI (Futurista Strategico) */}
+      {/* ANALISI */}
       {aperta && (
         <div className="mt-8 space-y-6 font-open-sans">
-          {/* Stato caricamento / errore */}
           {analisiStatus === 'loading' && (
             <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
               Generazione analisi in corso…
@@ -136,89 +126,49 @@ function PoesiaBox({ poesia, audioState }) {
               {analisiError}
             </div>
           )}
-
           {analisi && analisiStatus === 'success' && (
             <>
-              {/* Vettori di cambiamento */}
               <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300">
-                <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">
-                  Vettori di Cambiamento Attuali
-                </h3>
+                <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">Vettori di Cambiamento Attuali</h3>
                 <ul className="list-disc list-inside ml-6 text-green-700">
                   {(analisi.vettori_di_cambiamento_attuali || []).map((v, i) => (
                     <li key={i}>{v}</li>
                   ))}
                 </ul>
               </section>
-
-              {/* Scenario ottimistico */}
               <section className="bg-blue-50 p-5 rounded shadow-inner border border-blue-300">
-                <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">
-                  Scenario Ottimistico
-                </h3>
-                <p className="text-blue-700">
-                  {analisi.scenario_ottimistico || 'N/A'}
-                </p>
+                <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">Scenario Ottimistico</h3>
+                <p className="text-blue-700">{analisi.scenario_ottimistico || 'N/A'}</p>
               </section>
-
-              {/* Scenario pessimistico */}
               <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
-                <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">
-                  Scenario Pessimistico
-                </h3>
-                <p className="text-red-700">
-                  {analisi.scenario_pessimistico || 'N/A'}
-                </p>
+                <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">Scenario Pessimistico</h3>
+                <p className="text-red-700">{analisi.scenario_pessimistico || 'N/A'}</p>
               </section>
-
-              {/* Fattori inattesi */}
               <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
-                <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">
-                  Fattori Inattesi
-                </h3>
-                <p>
-                  <strong>Positivo (Jolly):</strong>{' '}
-                  {analisi.fattori_inattesi?.positivo_jolly || 'N/A'}
-                </p>
-                <p>
-                  <strong>Negativo (Cigno Nero):</strong>{' '}
-                  {analisi.fattori_inattesi?.negativo_cigno_nero || 'N/A'}
-                </p>
+                <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">Fattori Inattesi</h3>
+                <p><strong>Positivo (Jolly):</strong> {analisi.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
+                <p><strong>Negativo (Cigno Nero):</strong> {analisi.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
               </section>
-
-              {/* Dossier oggi */}
               <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
-                <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
-                  Dossier Strategico per Oggi
-                </h3>
-
+                <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">Dossier Strategico per Oggi</h3>
                 <p className="font-semibold">Azioni Preparatorie Immediate:</p>
                 <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
                   {(analisi.dossier_strategico_oggi?.azioni_preparatorie_immediate || []).map((a, i) => (
                     <li key={i}>{a}</li>
                   ))}
                 </ul>
-
                 <p className="font-semibold">Opportunità Emergenti:</p>
                 <ul className="list-disc list-inside ml-6 text-indigo-700 mb-3">
                   {(analisi.dossier_strategico_oggi?.opportunita_emergenti || []).map((o, i) => (
                     <li key={i}>{o}</li>
                   ))}
                 </ul>
-
-                <p>
-                  <strong>Rischio Esistenziale da Mitigare:</strong>{' '}
-                  {analisi.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}
-                </p>
+                <p><strong>Rischio Esistenziale da Mitigare:</strong> {analisi.dossier_strategico_oggi?.rischio_esistenziale_da_mitigare || 'N/A'}</p>
               </section>
             </>
           )}
-
-          {/* Messaggio fallback quando non c’è analisi e non siamo in loading/errore */}
           {!analisi && analisiStatus === 'idle' && (
-            <div className="text-gray-500 italic text-sm">
-              Analisi non disponibile per questa poesia.
-            </div>
+            <div className="text-gray-500 italic text-sm">Analisi non disponibile per questa poesia.</div>
           )}
         </div>
       )}
@@ -234,7 +184,6 @@ export default function App() {
   const lastGenRef = useRef(0)
   const genQueueRef = useRef([])
 
-  // Carica poesie dalla function edge
   const fetchPoesie = async () => {
     try {
       const res = await fetch(POESIE_API_URL, { cache: 'no-store' })
@@ -252,7 +201,6 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
-  // Mantieni lo stato dell’audio in base ai dati che arrivano
   useEffect(() => {
     const next = {}
     for (const p of poesie) {
@@ -261,10 +209,8 @@ export default function App() {
       else next[p.id] = 'non_generato'
     }
     setAudioStatus(next)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie])
 
-  // Coda: genera UN audio ogni 2 minuti
   useEffect(() => {
     const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== 'in_corso')
     if (daGenerare.length === 0) return
@@ -273,7 +219,7 @@ export default function App() {
 
     const tryGenerate = async () => {
       const now = Date.now()
-      if (now - lastGenRef.current < 2 * 60 * 1000) return // 2 minuti
+      if (now - lastGenRef.current < 2 * 60 * 1000) return
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
@@ -310,12 +256,10 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec
+    const interval = setInterval(tryGenerate, 5000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie, audioStatus])
 
-  // Filtri ricerca
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -328,7 +272,6 @@ export default function App() {
         TheItalianPoetryProject.com
       </h1>
 
-      {/* Search */}
       <div className="mb-8 poetry-search-bar">
         <input
           type="search"
@@ -341,7 +284,6 @@ export default function App() {
         />
       </div>
 
-      {/* Stato lista */}
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
 
       <div className="poesie-list" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -355,9 +297,7 @@ export default function App() {
           ))
         ) : (
           !loading && (
-            <p className="text-center text-gray-400 mt-12 text-lg">
-              Nessuna poesia trovata.
-            </p>
+            <p className="text-center text-gray-400 mt-12 text-lg">Nessuna poesia trovata.</p>
           )
         )}
       </div>
