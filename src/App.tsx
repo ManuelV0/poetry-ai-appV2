@@ -1,9 +1,9 @@
+
 import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from './lib/supabaseClient'
 
-// URL ASSOLUTO DELLA FUNCTION
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio'
-const POESIE_API_URL = '/.netlify/functions/poesie' // Cambia qui se serve path diverso
+const POESIE_API_URL = '/.netlify/functions/poesie'
 
 function PoesiaBox({ poesia, audioState }) {
   const [aperta, setAperta] = useState(false)
@@ -11,7 +11,10 @@ function PoesiaBox({ poesia, audioState }) {
   let analisi = poesia.analisi_psicologica
   try {
     if (typeof analisi === 'string') analisi = JSON.parse(analisi)
-  } catch {}
+    if (!analisi || typeof analisi !== 'object' || Object.keys(analisi).length === 0) analisi = null
+  } catch {
+    analisi = null
+  }
 
   let stato = "Non generato"
   if (audioState === "generato") stato = "Audio generato"
@@ -34,7 +37,6 @@ function PoesiaBox({ poesia, audioState }) {
           {aperta ? '▲ Chiudi' : '▼ Apri'}
         </span>
       </div>
-      {/* Stato audio + player */}
       {aperta && (
         <div className="mt-6">
           <div className="mb-2 font-semibold text-sm text-green-800">{stato}</div>
@@ -46,10 +48,8 @@ function PoesiaBox({ poesia, audioState }) {
           )}
         </div>
       )}
-      {/* Analisi Futurista Strategico */}
       {aperta && analisi && (
         <div className="mt-8 space-y-6 font-open-sans">
-          {/* Vettori di cambiamento */}
           <section className="bg-green-50 p-5 rounded shadow-inner border border-green-300">
             <h3 className="font-bold text-green-800 mb-3 border-b border-green-400 pb-2 text-lg font-montserrat">
               Vettori di Cambiamento Attuali
@@ -60,21 +60,18 @@ function PoesiaBox({ poesia, audioState }) {
               ))}
             </ul>
           </section>
-          {/* Scenario ottimistico */}
           <section className="bg-blue-50 p-5 rounded shadow-inner border border-blue-300">
             <h3 className="font-bold text-blue-800 mb-3 border-b border-blue-400 pb-2 text-lg font-montserrat">
               Scenario Ottimistico
             </h3>
             <p className="text-blue-700">{analisi.scenario_ottimistico || 'N/A'}</p>
           </section>
-          {/* Scenario pessimistico */}
           <section className="bg-red-50 p-5 rounded shadow-inner border border-red-300">
             <h3 className="font-bold text-red-800 mb-3 border-b border-red-400 pb-2 text-lg font-montserrat">
               Scenario Pessimistico
             </h3>
             <p className="text-red-700">{analisi.scenario_pessimistico || 'N/A'}</p>
           </section>
-          {/* Fattori inattesi */}
           <section className="bg-yellow-50 p-5 rounded shadow-inner border border-yellow-300">
             <h3 className="font-bold text-yellow-800 mb-3 border-b border-yellow-400 pb-2 text-lg font-montserrat">
               Fattori Inattesi
@@ -82,7 +79,6 @@ function PoesiaBox({ poesia, audioState }) {
             <p><strong>Positivo (Jolly):</strong> {analisi.fattori_inattesi?.positivo_jolly || 'N/A'}</p>
             <p><strong>Negativo (Cigno Nero):</strong> {analisi.fattori_inattesi?.negativo_cigno_nero || 'N/A'}</p>
           </section>
-          {/* Dossier strategico oggi */}
           <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
             <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
               Dossier Strategico per Oggi
@@ -103,6 +99,11 @@ function PoesiaBox({ poesia, audioState }) {
           </section>
         </div>
       )}
+      {aperta && !analisi && (
+        <div className="mt-6 text-gray-500 italic text-sm">
+          Analisi non disponibile per questa poesia.
+        </div>
+      )}
     </div>
   )
 }
@@ -115,7 +116,6 @@ export default function App() {
   const lastGenRef = useRef(0)
   const genQueueRef = useRef([])
 
-  // Carica poesie tramite function edge (NO SUPABASE CLIENT!)
   const fetchPoesie = async () => {
     try {
       const res = await fetch(POESIE_API_URL)
@@ -133,7 +133,6 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
-  // Aggiorna stati audio ogni volta che cambiano le poesie
   useEffect(() => {
     let newStatus = {}
     poesie.forEach(p => {
@@ -142,10 +141,8 @@ export default function App() {
       else newStatus[p.id] = "non_generato"
     })
     setAudioStatus(newStatus)
-    // eslint-disable-next-line
   }, [poesie])
 
-  // Gestione coda generazione, UNA ogni 2 minuti
   useEffect(() => {
     const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== "in_corso")
     if (daGenerare.length === 0) return
@@ -154,7 +151,7 @@ export default function App() {
 
     const tryGenerate = async () => {
       const now = Date.now()
-      if (now - lastGenRef.current < 2 * 60 * 1000) return  // 2 minuti tra una generazione e l'altra
+      if (now - lastGenRef.current < 2 * 60 * 1000) return
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
@@ -176,10 +173,7 @@ export default function App() {
         })
         const json = await res.json()
         if (json.audio_url) {
-          await supabase
-            .from('poesie')
-            .update({ audio_url: json.audio_url, audio_generated: true })
-            .eq('id', poesia.id)
+          await supabase.from('poesie').update({ audio_url: json.audio_url, audio_generated: true }).eq('id', poesia.id)
           setAudioStatus(st => ({ ...st, [nextId]: "generato" }))
         } else {
           setAudioStatus(st => ({ ...st, [nextId]: "non_generato" }))
@@ -189,12 +183,10 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec, parte solo 1 ogni 2 min!
+    const interval = setInterval(tryGenerate, 5000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line
   }, [poesie, audioStatus])
 
-  // Filtra poesie
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -218,7 +210,7 @@ export default function App() {
         />
       </div>
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
-      <div className="poesie-list" style={{maxHeight: "70vh", overflowY: "auto"}}>
+      <div className="poesie-list" style={{ maxHeight: "70vh", overflowY: "auto" }}>
         {poesieFiltrate.length > 0 ? (
           poesieFiltrate.map(poesia => (
             <PoesiaBox key={poesia.id} poesia={poesia} audioState={audioStatus[poesia.id] || "non_generato"} />
