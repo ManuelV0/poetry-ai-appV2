@@ -161,7 +161,7 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
 
   // Se apro la card e manca analisi, chiedo al backend di generarla
   useEffect(() => {
-    const mancaAnalisi = !(analisiPsico || analisiLett)
+    const mancaAnalisi = !(analisiPsico && analisiLett)
     if (!aperta || !mancaAnalisi || generazioneInCorsoRef.current) return
 
     const genera = async () => {
