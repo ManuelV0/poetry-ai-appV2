@@ -16,6 +16,66 @@ function isNonEmptyObject(v: any) {
   return v && typeof v === 'object' && Object.keys(v).length > 0
 }
 
+// Parser robusto: gestisce JSON annidati e fallback
+function deepParseJSON(value: any): any {
+  if (typeof value !== 'string') return value
+  try {
+    const parsed = JSON.parse(value)
+    return deepParseJSON(parsed)
+  } catch {
+    return value
+  }
+}
+
+// Normalizzatore per i profili poetici -> schema atteso
+function normalizeAnalisiLetteraria(raw: any): any {
+  if (!raw || typeof raw !== 'object') return raw
+
+  const hasNewSchema =
+    'voce' in raw || 'stile' in raw || 'tono' in raw ||
+    'temi_ricorrenti' in raw || 'immagini_metafore_tipiche' in raw || 'influenze_letterarie' in raw
+
+  if (!hasNewSchema) return raw
+
+  const temiPrincipali = Array.isArray(raw.temi_ricorrenti)
+    ? raw.temi_ricorrenti.map((t: any) =>
+        typeof t === 'string' ? { tema: t } : { tema: t?.tema || String(t || '') }
+      )
+    : undefined
+
+  return {
+    analisi_tematica_filosofica: {
+      temi_principali: temiPrincipali,
+      temi_secondari: undefined,
+      tesi_filosofica: undefined
+    },
+    analisi_stilistica_narratologica: {
+      stile: raw.stile,
+      dispositivi_retorici: Array.isArray(raw.immagini_metafore_tipiche)
+        ? raw.immagini_metafore_tipiche.map((x: any) =>
+            typeof x === 'string' ? { nome: x } : { nome: x?.nome || String(x || '') }
+          )
+        : undefined,
+      narratore: undefined,
+      tempo_narrativo: undefined,
+      personaggi: undefined
+    },
+    contesto_storico_biografico: {
+      storico: undefined,
+      biografico: undefined
+    },
+    sintesi_critica_conclusione: {
+      sintesi: [
+        raw.voce ? `Voce: ${raw.voce}.` : '',
+        raw.tono ? `Tono: ${raw.tono}.` : '',
+        raw.influenze_letterarie
+          ? `Influenze: ${Array.isArray(raw.influenze_letterarie) ? raw.influenze_letterarie.join(', ') : raw.influenze_letterarie}.`
+          : ''
+      ].filter(Boolean).join(' ')
+    }
+  }
+}
+
 function SafeList({ items }: { items?: any[] }) {
   if (!Array.isArray(items) || items.length === 0) return <p className="text-gray-500 italic">N/A</p>
   return (
@@ -45,12 +105,10 @@ function LabelValue({ label, value }: { label: string, value?: string }) {
   )
 }
 
-/** Per array tipo [{ nome, evidenze:[] }] o semplici stringhe */
 function EvidenceList({ items }: { items?: any[] }) {
   if (!Array.isArray(items) || items.length === 0) {
     return <p className="text-gray-500 italic">N/A</p>
   }
-
   return (
     <ul className="list-disc list-inside ml-6">
       {items.map((item, i) => {
@@ -74,7 +132,6 @@ function EvidenceList({ items }: { items?: any[] }) {
   )
 }
 
-/** Per dispositivi_retorici che possono essere string o { nome, effetto } */
 function DevicesList({ items }: { items?: any[] }) {
   if (!Array.isArray(items) || items.length === 0) {
     return <p className="text-gray-500 italic">N/A</p>
@@ -96,7 +153,6 @@ function DevicesList({ items }: { items?: any[] }) {
   )
 }
 
-/** Per temi_secondari che possono essere string o { tema, commento, citazioni[] } */
 function TemiSecondariList({ items }: { items?: any[] }) {
   if (!Array.isArray(items) || items.length === 0) {
     return <p className="text-gray-500 italic">N/A</p>
@@ -125,27 +181,18 @@ function TemiSecondariList({ items }: { items?: any[] }) {
 function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_generato'|'in_corso'|'generato' }) {
   const [aperta, setAperta] = useState(false)
 
-  // Stato analisi: letteraria + psicologica
   const [analisiPsico, setAnalisiPsico] = useState<AnalisiPsicologica | null>(() => {
-    try {
-      const raw = poesia.analisi_psicologica
-      if (!raw) return null
-      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-      return isNonEmptyObject(obj) ? obj : null
-    } catch {
-      return null
-    }
+    const raw = poesia.analisi_psicologica
+    if (!raw) return null
+    const obj = deepParseJSON(raw)
+    return isNonEmptyObject(obj) ? obj : null
   })
 
   const [analisiLett, setAnalisiLett] = useState<AnalisiLetteraria | null>(() => {
-    try {
-      const raw = poesia.analisi_letteraria
-      if (!raw) return null
-      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-      return isNonEmptyObject(obj) ? obj : null
-    } catch {
-      return null
-    }
+    const raw = poesia.analisi_letteraria
+    if (!raw) return null
+    const obj = normalizeAnalisiLetteraria(deepParseJSON(raw))
+    return isNonEmptyObject(obj) ? obj : null
   })
 
   const [analisiStatus, setAnalisiStatus] = useState<'idle'|'loading'|'success'|'error'>(
@@ -159,7 +206,7 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
   if (audioState === 'generato') statoAudio = 'Audio generato'
   if (audioState === 'in_corso') statoAudio = 'Generazione in corso...'
 
-  // Se apro la card e manca analisi, chiedo al backend di generarla
+  // Se apro la card e manca analisi psicologica o letteraria → richiedila
   useEffect(() => {
     const mancaAnalisi = !(analisiPsico && analisiLett)
     if (!aperta || !mancaAnalisi || generazioneInCorsoRef.current) return
@@ -169,18 +216,12 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
       setAnalisiStatus('loading')
       setAnalisiError(null)
       try {
-        // 1) genera/forza analisi
-        const res = await fetch(ANALISI_API_URL, {
+        await fetch(ANALISI_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: poesia.id, content: poesia.content })
         })
-        if (!res.ok) {
-          const t = await res.text().catch(() => '')
-          throw new Error(t || `HTTP ${res.status}`)
-        }
 
-        // 2) ricarica la poesia con i campi analisi aggiornati
         const { data, error } = await supabase
           .from('poesie')
           .select('analisi_letteraria, analisi_psicologica')
@@ -189,10 +230,8 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
 
         if (error) throw error
 
-        let nuovaPsico = data?.analisi_psicologica ?? null
-        let nuovaLett = data?.analisi_letteraria ?? null
-        try { if (typeof nuovaPsico === 'string') nuovaPsico = JSON.parse(nuovaPsico) } catch {}
-        try { if (typeof nuovaLett === 'string') nuovaLett = JSON.parse(nuovaLett) } catch {}
+        let nuovaPsico = deepParseJSON(data?.analisi_psicologica ?? null)
+        let nuovaLett = normalizeAnalisiLetteraria(deepParseJSON(data?.analisi_letteraria ?? null))
 
         const okPsico = isNonEmptyObject(nuovaPsico)
         const okLett = isNonEmptyObject(nuovaLett)
@@ -215,7 +254,7 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
     genera()
   }, [aperta, analisiPsico, analisiLett, poesia.id, poesia.content])
 
-  // Blocchi di UI
+  // --- Render funzioni (analisi psicologica, letteraria, futurista) ---
   const renderAnalisiFuturistaIfAny = () => {
     if (!analisiPsico) return null
     const a = analisiPsico
@@ -282,13 +321,11 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
   const renderAnalisiPsicologicaDettagliata = () => {
     if (!analisiPsico) return null
     const a = analisiPsico
-
     const hasDetailed =
       Array.isArray(a?.fallacie_logiche) ||
       Array.isArray(a?.bias_cognitivi) ||
       Array.isArray(a?.meccanismi_di_difesa) ||
       Array.isArray(a?.schemi_autosabotanti)
-
     if (!hasDetailed) return null
 
     return (
@@ -327,17 +364,13 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
   const renderAnalisiLetteraria = () => {
     if (!analisiLett) return null
     const a = analisiLett
-
     const temi = a?.analisi_tematica_filosofica
     const stile = a?.analisi_stilistica_narratologica
     const contesto = a?.contesto_storico_biografico
     const sintesi = a?.sintesi_critica_conclusione
-
     const hasAnything =
       isNonEmptyObject(temi) || isNonEmptyObject(stile) || isNonEmptyObject(contesto) || !!sintesi
-
     if (!hasAnything) return null
-
     return (
       <>
         {/* 1. Analisi Tematica e Filosofica */}
@@ -347,7 +380,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
               Analisi Tematica e Filosofica
             </h3>
 
-            {/* Temi principali */}
             {Array.isArray(temi?.temi_principali) && temi.temi_principali.length > 0 && (
               <div className="mb-4">
                 <h4 className="font-semibold text-emerald-900 mb-2">Temi principali</h4>
@@ -366,7 +398,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
               </div>
             )}
 
-            {/* Temi secondari */}
             {Array.isArray(temi?.temi_secondari) && temi.temi_secondari.length > 0 && (
               <div className="mb-2">
                 <h4 className="font-semibold text-emerald-900 mb-2">Temi secondari</h4>
@@ -374,7 +405,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
               </div>
             )}
 
-            {/* Tesi filosofica */}
             {temi?.tesi_filosofica && (
               <div className="mt-2">
                 <h4 className="font-semibold text-emerald-900 mb-1">Tesi filosofica</h4>
@@ -384,14 +414,13 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
           </section>
         )}
 
-        {/* 2 & 3. Stilistica/Narratologia (+eventuali personaggi) */}
+        {/* 2 & 3. Stilistica/Narratologia */}
         {isNonEmptyObject(stile) && (
           <section className="bg-indigo-50 p-5 rounded shadow-inner border border-indigo-300">
             <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-400 pb-2 text-lg font-montserrat">
               Analisi Stilistica e Narratologica
             </h3>
 
-            {/* Stile */}
             {stile?.stile && (
               <>
                 <h4 className="font-semibold text-indigo-900 mb-1">Stile di scrittura</h4>
@@ -431,7 +460,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
               </div>
             )}
 
-            {/* Personaggi (se presenti qui) */}
             {Array.isArray(stile?.personaggi) && stile.personaggi.length > 0 && (
               <div className="mt-4">
                 <h4 className="font-semibold text-indigo-900 mb-2">Personaggi e Analisi Psicologica</h4>
@@ -453,7 +481,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
           </section>
         )}
 
-        {/* 4. Contesto Storico e Biografico */}
         {isNonEmptyObject(contesto) && (
           <section className="bg-amber-50 p-5 rounded shadow-inner border border-amber-300">
             <h3 className="font-bold text-amber-800 mb-3 border-b border-amber-400 pb-2 text-lg font-montserrat">
@@ -474,13 +501,11 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
           </section>
         )}
 
-        {/* 5. Sintesi Critica e Conclusione */}
         {sintesi && (
           <section className="bg-slate-50 p-5 rounded shadow-inner border border-slate-300">
             <h3 className="font-bold text-slate-800 mb-3 border-b border-slate-400 pb-2 text-lg font-montserrat">
               Sintesi Critica e Conclusione
             </h3>
-
             {typeof sintesi === 'string' ? (
               <p className="text-slate-800 whitespace-pre-wrap">{sintesi}</p>
             ) : (
@@ -507,7 +532,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
 
   return (
     <div className="w-full border rounded-lg p-6 shadow-lg mb-6 bg-white transition-all hover:shadow-xl font-sans">
-      {/* HEADER CARD */}
       <div
         className="cursor-pointer flex justify-between items-start"
         onClick={() => setAperta(v => !v)}
@@ -530,7 +554,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
         </span>
       </div>
 
-      {/* AUDIO */}
       {aperta && (
         <div className="mt-6">
           <div className="mb-2 font-semibold text-sm text-green-800">{statoAudio}</div>
@@ -543,7 +566,6 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
         </div>
       )}
 
-      {/* ANALISI */}
       {aperta && (
         <div className="mt-8 space-y-6 font-open-sans">
           {analisiStatus === 'loading' && (
@@ -558,13 +580,8 @@ function PoesiaBox({ poesia, audioState }: { poesia: any, audioState: 'non_gener
           )}
           {(analisiPsico || analisiLett) && analisiStatus === 'success' && (
             <>
-              {/* Analisi Psicologica Dettagliata (fallacie/bias/difese/autosabotaggi) */}
               {renderAnalisiPsicologicaDettagliata()}
-
-              {/* Analisi Letteraria (temi/citazioni, narratore, stile, contesto, sintesi) */}
               {renderAnalisiLetteraria()}
-
-              {/* Eventuale blocco “Futurista Strategico” se presente nella psicologica */}
               {renderAnalisiFuturistaIfAny()}
             </>
           )}
@@ -587,7 +604,6 @@ export default function App() {
   const lastGenRef = useRef(0)
   const genQueueRef = useRef<string[]>([])
 
-  // Carica poesie dalla function
   const fetchPoesie = async () => {
     try {
       const res = await fetch(POESIE_API_URL, { cache: 'no-store' })
@@ -605,7 +621,6 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
-  // Stato audio derivato
   useEffect(() => {
     const next: Record<string, 'non_generato'|'in_corso'|'generato'> = {}
     for (const p of poesie) {
@@ -614,10 +629,8 @@ export default function App() {
       else next[p.id] = 'non_generato'
     }
     setAudioStatus(next)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie])
 
-  // Coda: genera UN audio ogni 2 minuti
   useEffect(() => {
     const daGenerare = poesie.filter(p => !p.audio_url && audioStatus[p.id] !== 'in_corso')
     if (daGenerare.length === 0) return
@@ -626,7 +639,7 @@ export default function App() {
 
     const tryGenerate = async () => {
       const now = Date.now()
-      if (now - lastGenRef.current < 2 * 60 * 1000) return // 2 minuti
+      if (now - lastGenRef.current < 2 * 60 * 1000) return
       const nextId = genQueueRef.current.shift()
       if (!nextId) return
 
@@ -663,12 +676,10 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(tryGenerate, 5000) // check ogni 5 sec
+    const interval = setInterval(tryGenerate, 5000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poesie, audioStatus])
 
-  // Filtri ricerca
   const poesieFiltrate = poesie.filter(p =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
     p.author_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -681,7 +692,6 @@ export default function App() {
         TheItalianPoetryProject.com
       </h1>
 
-      {/* Search */}
       <div className="mb-8 poetry-search-bar">
         <input
           type="search"
@@ -694,7 +704,6 @@ export default function App() {
         />
       </div>
 
-      {/* Stato lista */}
       {loading && <p className="text-center text-gray-500">Caricamento poesie...</p>}
 
       <div className="poesie-list" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -708,7 +717,7 @@ export default function App() {
           ))
         ) : (
           !loading && (
-            <p className="text-center text-gray-400 mt-12 text-lg">
+            <p className="text-center text-gray-400 mt-12 text-lg">                <CitazioniList items={x.citazioni} />
               Nessuna poesia trovata.
             </p>
           )
