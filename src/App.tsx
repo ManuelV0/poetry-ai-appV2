@@ -1,9 +1,9 @@
 // App.tsx (top of the file)
-import '@/styles.css';
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { FaArrowLeft, FaPlay, FaPause, FaStop, FaDownload } from 'react-icons/fa';
-
+import './index.css'    
 
 // --- CONFIG ENDPOINTS ---
 const AUDIO_API_URL = 'https://poetry.theitalianpoetryproject.com/.netlify/functions/genera-audio';
