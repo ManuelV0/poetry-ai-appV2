@@ -1,69 +1,59 @@
-// netlify/functions/genera-analisi-batch.ts
+import 'dotenv/config'
 import { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 
-// --- ENV helpers
+/** ENV helpers */
 const mustGet = (k: string) => {
   const v = process.env[k]
   if (!v) throw new Error(`Missing env: ${k}`)
   return v
 }
 
-// --- Clients
+/** Clients */
 const supabase = createClient(
   mustGet('SUPABASE_URL'),
-  mustGet('SUPABASE_SERVICE_ROLE_KEY') // service role (solo lato server!)
+  mustGet('SUPABASE_SERVICE_ROLE_KEY') // service role (server-side only)
 )
 const openai = new OpenAI({ apiKey: mustGet('OPENAI_API_KEY') })
 
-// --- Opzionale: proteggi l'endpoint con un header segreto
+/** Optional endpoint protection */
 const JOB_SECRET = process.env.JOB_SECRET || ''
 
-// --- Utils
+/** Utils */
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-const buildPrompt = (content: string) => `
-Agisci come un "Futurista Strategico" e un analista di sistemi complessi.
-Il tuo compito non è predire il futuro, ma mappare le sue possibilità per fornire un vantaggio decisionale.
-
-Argomento: ${content}
-
-Proiettalo 20 anni nel futuro e crea un dossier strategico completo in formato JSON con la seguente struttura obbligatoria:
+/** Prompt futurista (JSON) */
+const buildFuturistPrompt = (content: string) => `
+Agisci come un "Futurista Strategico".
+Mappa possibilità a 20 anni sul tema seguente e restituisci SOLO un JSON valido con lo schema:
 
 {
   "vettori_di_cambiamento_attuali": [
-    "Descrizione del vettore 1",
-    "Descrizione del vettore 2",
-    "Descrizione del vettore 3"
+    "Descrizione 1",
+    "Descrizione 2",
+    "Descrizione 3"
   ],
-  "scenario_ottimistico": "Descrizione dettagliata dell'utopia plausibile",
-  "scenario_pessimistico": "Descrizione dettagliata della distopia plausibile",
+  "scenario_ottimistico": "Testo",
+  "scenario_pessimistico": "Testo",
   "fattori_inattesi": {
-    "positivo_jolly": "Evento positivo imprevisto",
-    "negativo_cigno_nero": "Evento negativo imprevisto"
+    "positivo_jolly": "Testo",
+    "negativo_cigno_nero": "Testo"
   },
   "dossier_strategico_oggi": {
-    "azioni_preparatorie_immediate": [
-      "Azione 1",
-      "Azione 2",
-      "Azione 3"
-    ],
-    "opportunita_emergenti": [
-      "Opportunità 1",
-      "Opportunità 2"
-    ],
-    "rischio_esistenziale_da_mitigare": "Descrizione del rischio"
+    "azioni_preparatorie_immediate": ["Azione 1","Azione 2","Azione 3"],
+    "opportunita_emergenti": ["Opportunità 1","Opportunità 2"],
+    "rischio_esistenziale_da_mitigare": "Testo"
   }
 }
 
-Requisiti:
-- Pensa in modo sistemico.
-- Tono lucido, strategico e privo di sensazionalismo.
-- Usa esempi concreti.
-`
+Tono lucido e non sensazionalista. Usa esempi concreti.
+ARGOMENTO:
+${content}
+`.trim()
 
-const generateMockAnalysis = (content: string) => ({
+/** Fallback mock in caso di JSON malformato */
+const generateMockFuturist = () => ({
   vettori_di_cambiamento_attuali: [
     'Avanzamenti tecnologici generici',
     'Cambiamenti sociali globali',
@@ -91,16 +81,25 @@ const generateMockAnalysis = (content: string) => ({
   },
 })
 
+/** Merge helper: preserva tutto ciò che esiste in analisi_psicologica e aggiunge la sezione futurista */
+const mergePsyAndFuturist = (current: any, futurist: any) => {
+  const base = current && typeof current === 'object' ? current : {}
+  return {
+    ...base,
+    ...futurist, // scrive/aggiorna SOLO le chiavi futuriste; le altre (psico) restano
+  }
+}
+
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'GET') {
     return {
       statusCode: 405,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Metodo non consentito' }),
+      body: JSON.stringify({ error: 'Method not allowed' }),
     }
   }
 
-  // opzionale: richiedi header segreto per evitare trigger pubblici
+  // opzionale: header segreto per limitare l’accesso pubblico
   if (JOB_SECRET) {
     const got = event.headers['x-job-secret'] || event.headers['X-Job-Secret']
     if (got !== JOB_SECRET) {
@@ -113,17 +112,15 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    // Prendi fino a 5 poesie con analisi mancante o vuota o "null"
-    // NB: .or(...) accetta una stringa con filtri separati da virgola
+    // Prendi fino a 5 poesie con analisi_psicologica nulla o vuota ({}).
     const { data: poesie, error } = await supabase
       .from('poesie')
-      .select('id, title, content, analisi_psicologica')
+      .select('id, title, content, analisi_psicologica, analisi_letteraria')
       .or('analisi_psicologica.is.null,analisi_psicologica.eq.{}')
       .not('content', 'is', null)
       .limit(5)
 
     if (error) throw error
-
     if (!poesie?.length) {
       return {
         statusCode: 200,
@@ -132,47 +129,49 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    let count = 0
+    let updated = 0
 
     for (const poesia of poesie) {
-      const content = (poesia.content || '').trim()
-      if (!content) continue
+      const text = (poesia.content || '').trim()
+      if (!text) continue
 
       try {
-        const prompt = buildPrompt(content)
-
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o',
           response_format: { type: 'json_object' },
-          messages: [{ role: 'user', content: prompt }],
+          messages: [{ role: 'user', content: buildFuturistPrompt(text) }],
           temperature: 0.7,
         })
 
-        let analisi: any
+        let futurist: any
         try {
-          analisi = JSON.parse(completion.choices[0].message.content || '{}')
+          futurist = JSON.parse(completion.choices[0].message.content || '{}')
+          // se JSON vuoto, usa mock per evitare scrittura inutile
+          if (!futurist || Object.keys(futurist).length === 0) futurist = generateMockFuturist()
         } catch {
-          analisi = generateMockAnalysis(content)
+          futurist = generateMockFuturist()
         }
+
+        const mergedPsy = mergePsyAndFuturist(poesia.analisi_psicologica, futurist)
 
         const { error: updErr } = await supabase
           .from('poesie')
           .update({
-            // teniamo analisi_letteraria a null: il nuovo front-end non la usa
-            analisi_letteraria: null,
-            analisi_psicologica: analisi,
+            analisi_psicologica: mergedPsy,
+            // NON azzerare l’analisi letteraria se già presente
+            analisi_letteraria: poesia.analisi_letteraria ?? null,
           })
           .eq('id', poesia.id)
 
         if (updErr) {
           console.error(`Errore update poesia ${poesia.id}`, updErr)
         } else {
-          count++
-          console.log(`✔ Analizzata poesia ${poesia.id}`)
+          updated++
+          console.log(`✔ Aggiornata poesia ${poesia.id}`)
         }
 
-        // piccolo delay per non martellare OpenAI
-        await sleep(1000)
+        // Rate limit di cortesia
+        await sleep(800)
       } catch (err) {
         console.error('Errore su poesia:', poesia.id, err)
       }
@@ -181,7 +180,7 @@ export const handler: Handler = async (event) => {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Analizzate e aggiornate ${count} poesie.` }),
+      body: JSON.stringify({ message: `Analizzate e aggiornate ${updated} poesie.` }),
     }
   } catch (err: any) {
     console.error('Errore generale:', err)
