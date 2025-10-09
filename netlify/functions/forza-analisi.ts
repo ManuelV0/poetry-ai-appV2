@@ -136,7 +136,7 @@ TESTO:
         analisi_psicologica: nextPsy,
         analisi_letteraria: nextLett
       })
-      .eq('id', poemId)y/
+      .eq('id', poemId);
 
     if (dbError) {
       return { statusCode: 500, body: JSON.stringify({ error: 'DB update error', details: dbError.message }) }
