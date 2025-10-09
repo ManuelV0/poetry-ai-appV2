@@ -1,4 +1,104 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- COMPONENTS: manteniamo i tuoi nomi di classe e applichiamo Tailwind ---- */
+@layer components {
+  /* Layout */
+  .app-container { @apply max-w-[960px] mx-auto p-4; }
+  .app-header { @apply flex justify-center mb-4; }
+
+  /* Search bar */
+  .search-bar { @apply relative w-full max-w-[560px]; }
+  .search-bar input[type="search"] {
+    @apply w-full rounded-xl border border-slate-200 bg-white p-3 outline-none;
+  }
+  .search-bar input[type="search"]:focus {
+    @apply border-slate-400 ring-2 ring-slate-300;
+  }
+  .clear-search {
+    @apply absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full border-0 bg-slate-200 text-slate-900 cursor-pointer;
+  }
+  .clear-search:hover { @apply bg-slate-300; }
+
+  /* Lista poesie / card */
+  .poesie-list { @apply grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]; }
+  .poesia-card {
+    @apply bg-white border border-slate-200 rounded-2xl p-4 cursor-pointer transition
+           hover:-translate-y-[2px] hover:shadow-lg hover:border-slate-300;
+  }
+  .poesia-card h3 { @apply m-0 mb-1 text-[1.05rem]; }
+  .poesia-card .author { @apply m-0 mb-2 text-slate-600 text-[0.9rem]; }
+  .poesia-card .preview { @apply m-0 text-slate-700; }
+
+  /* Stati */
+  .loader, .empty-state, .error-message { @apply text-center p-4; }
+  .loader { @apply text-slate-600; }
+  .empty-state { @apply text-slate-500; }
+  .error-message { @apply text-red-700 bg-red-50 border border-red-200 rounded-xl; }
+  .error-message button { @apply ml-2 px-3 py-2 rounded-lg border border-red-500 bg-red-500 text-white cursor-pointer hover:brightness-95; }
+
+  /* Pagina poesia */
+  .poetry-page { @apply grid gap-4; }
+  .back-button {
+    @apply inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-200 text-slate-900 px-3 py-2 cursor-pointer hover:bg-slate-300 no-underline;
+  }
+  .poetry-header h1 { @apply m-0 text-[clamp(1.4rem,2.4vw,2rem)]; }
+  .poetry-header .author { @apply mt-1 text-slate-600; }
+
+  .poetry-content { @apply grid gap-4; }
+  .poetry-text { @apply bg-white border border-slate-200 rounded-2xl p-4 overflow-auto; }
+  .poetry-text pre { @apply m-0 whitespace-pre-wrap break-words; }
+
+  /* Sezione audio */
+  .audio-section { @apply bg-white border border-slate-200 rounded-2xl p-4 grid gap-3; }
+  .audio-status { @apply text-[0.95rem] text-slate-700; }
+  .progress-indicator { @apply relative h-2 bg-slate-100 rounded-full overflow-hidden mt-2; }
+  .progress-indicator .progress-bar { @apply h-full bg-sky-500 transition-[width] duration-200; }
+
+  .audio-options { @apply flex flex-wrap gap-2; }
+  .listen-button, .audio-download-link, .stop-button, .play-button {
+    @apply inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-200 text-slate-900 px-3 py-2 cursor-pointer hover:bg-slate-300 no-underline;
+  }
+
+  /* Player con evidenziazione */
+  .audio-player-modal { @apply sticky top-2 bg-white border border-slate-200 rounded-2xl p-3 grid gap-2; }
+  .audio-controls { @apply grid grid-cols-1 gap-2 md:grid-cols-[auto_auto_1fr_auto] md:items-center; }
+
+  .speed-controls { @apply inline-flex items-center gap-2 text-[0.9rem] text-slate-700; }
+  .speed-button { @apply rounded-full border border-slate-300 bg-white text-slate-900 px-2.5 py-1.5 cursor-pointer hover:bg-slate-100; }
+  .speed-button.active { @apply bg-sky-500 border-sky-600 text-white; }
+
+  .progress-bar { @apply relative h-2 bg-slate-100 rounded-full overflow-hidden; }
+  .progress-fill { @apply absolute left-0 top-0 bottom-0 w-0 bg-emerald-500 transition-[width] duration-150; }
+
+  .audio-error { @apply text-red-700 bg-red-50 border border-red-200 p-2 rounded-xl; }
+
+  /* Evidenziazione parole */
+  .content-highlight { @apply max-h-[40vh] overflow-auto p-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 leading-7; }
+  .content-highlight .word { @apply py-0.5 transition-colors; }
+  .content-highlight .word.highlight { @apply bg-amber-50 ring-2 ring-amber-200 rounded; }
+  .content-highlight .word.glow { text-shadow: 0 0 6px rgba(250, 204, 21, 0.65); }
+
+  /* Sezioni analisi */
+  .analysis-sections { @apply grid gap-4; }
+  .analysis-section { @apply bg-white border border-slate-200 rounded-2xl p-4; }
+  .analysis-section h2 { @apply m-0 mb-2 text-[1.1rem]; }
+  .analysis-section h4, .analysis-section h5 { @apply my-1.5; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Dark mode semplice (se darkMode: 'media') */
+@media (prefers-color-scheme: dark) {
+  .poesia-card, .poetry-text, .audio-section, .audio-player-modal, .analysis-section { @apply bg-slate-900 border-slate-800 text-slate-100; }
+  .search-bar input[type="search"] { @apply bg-slate-900 text-slate-100 border-slate-800; }
+  .clear-search { @apply bg-slate-800 text-slate-100; }
+  .listen-button, .audio-download-link, .stop-button, .play-button { @apply bg-slate-800 text-slate-100 border-slate-700 hover:bg-slate-700; }
+  .speed-button { @apply bg-slate-900 text-slate-100 border-slate-700; }
+  .content-highlight { @apply bg-slate-900 border-slate-800; }
+  .content-highlight .word.highlight { @apply bg-slate-800 ring-slate-700; }
+}
