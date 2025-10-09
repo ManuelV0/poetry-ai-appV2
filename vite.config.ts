@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '/src': path.resolve(__dirname, 'src'), // Optional: solo se vuoi usare /src nei tuoi import
+      '@': path.resolve(__dirname, 'src'), // ✅ Alias standard per import più puliti
     },
   },
 })
