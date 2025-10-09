@@ -1,5 +1,5 @@
 // App.tsx (top of the file)
-import '@styles.css';
+import '@src/styles.css';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { FaArrowLeft, FaPlay, FaPause, FaStop, FaDownload } from 'react-icons/fa';
