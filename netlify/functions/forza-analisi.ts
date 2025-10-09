@@ -1,48 +1,65 @@
-import 'dotenv/config';
-import { Handler } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
 
+import 'dotenv/config'
+import { Handler } from '@netlify/functions'
+import { createClient } from '@supabase/supabase-js'
+import OpenAI from 'openai'
+
+/** Utils env */
+const mustGet = (k: string) => {
+  const v = process.env[k]
+  if (!v) throw new Error(`Missing env: ${k}`)
+  return v
+}
+
+/** Cly/ients */
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+  mustGet('SUPABASE_URL'),
+  mustGet('SUPABASE_SERVICE_ROLE_KEY') // service role (server-side only)
+)
+const openai = new OpenAI({ apiKey: mustGet('OPENAI_API_KEY') })
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+/** Schema normalizer per analisi_psicologica */
+const ensurePsySchema = (obj: any = {}) => ({
+  fallacie_logiche: obj.fallacie_logiche ?? [],
+  bias_cognitivi: obj.bias_cognitivi ?? [],
+  meccanismi_di_difesa: obj.meccanismi_di_difesa ?? [],
+  schemi_autosabotanti: obj.schemi_autosabotanti ?? [],
+  // Campi opzionali aggiuntivi (non obbligatori per il frontend ma preservati)
+  pattern_emotivi: obj.pattern_emotivi ?? [],
+  dinamiche_relazionali: obj.dinamiche_relazionali ?? [],
+  lessico_emotivo: obj.lessico_emotivo ?? [],
+  // Se in passato hai scritto campi "futuristi" dentro lo stesso JSON, preservali:
+  vettori_di_cambiamento_attuali: obj.vettori_di_cambiamento_attuali ?? obj["vettori_di_cambiamento_attuali"],
+  scenario_ottimistico: obj.scenario_ottimistico ?? obj["scenario_ottimistico"],
+  scenario_pessimistico: obj.scenario_pessimistico ?? obj["scenario_pessimistico"],
+  fattori_inattesi: obj.fattori_inattesi ?? obj["fattori_inattesi"],
+  dossier_strategico_oggi: obj.dossier_strategico_oggi ?? obj["dossier_strategico_oggi"],
+})
 
+/** Netlify function */
 export const handler: Handler = async (event) => {
   try {
+    if (event.httpMethod !== 'POST') {
+      return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) }
+    }
     if (!event.body) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Missing request body' }) };
+      return { statusCode: 400, body: JSON.stringify({ error: 'Missing request body' }) }
     }
 
-    const { id, content, title, author_name } = JSON.parse(event.body);
-
+    const payload = JSON.parse(event.body)
+    const { id, content, title, author_name } = payload || {}
     if (!id || !content) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Missing id or content' }) };
+      return { statusCode: 400, body: JSON.stringify({ error: 'Missing id or content' }) }
     }
 
-    // ✅ Forza l'ID come stringa per Supabase
-    const poemId = String(id);
+    const poemId = String(id)
 
-    console.log('📌 Analisi forzata per poesia ID:', poemId);
-
-    // PROMPT PSICOLOGICO COMPLETO
-    const psychologicalPrompt = `
-Agisci come un analista brutalmente onesto ma eccezionalmente acuto.
-
-Compito: analizza il testo poetico che fornirò e individua TUTTE le occorrenze possibili delle seguenti categorie, citando SEMPRE evidenze testuali precise.
-
-REGOLE:
-- Sii diretto ma sempre fondato su frasi del testo.
-- Se non trovi elementi in una categoria, restituisci array vuoto.
-- L’output DEVE essere JSON valido secondo lo schema seguente.
-
-SCHEMA JSON:
+    // --- Prompt compatti e robusti ---
+    const psychologicalSystem = 'Sei un analista psicologico letterario. Rispondi SOLO in JSON.'
+    const psychologicalUser = `
+Analizza il testo poetico e restituisci JSON con lo schema esatto:
 {
-  "fallacie_logiche": [{"nome":"", "evidenze":["", ""]}],
+  "fallacie_logiche": [{"nome":"", "evidenze":[""]}],
   "bias_cognitivi": [{"nome":"", "evidenze":[""]}],
   "meccanismi_di_difesa": [{"nome":"", "evidenze":[""]}],
   "schemi_autosabotanti": [{"nome":"", "evidenze":[""]}],
@@ -50,122 +67,84 @@ SCHEMA JSON:
   "dinamiche_relazionali": [{"nome":"", "evidenze":[""]}],
   "lessico_emotivo": [{"categoria":"", "esempi":["",""]}]
 }
-
-TESTO DA ANALIZZARE:
+Se non trovi elementi per una sezione, usa array vuoti.
+TESTO:
 <<<${content}>>>
-    `;
+`.trim()
 
-    // PROMPT LETTERARIO COMPLETO
-    const literaryPrompt = `
-Agisci come un critico letterario accademico con esperienza in analisi strutturalista, critica psicanalitica e contestualizzazione storica.
-
-REGOLE:
-- Fornisci solo un JSON valido.
-- Rispetta lo schema fornito sotto.
-- Includi SEMPRE citazioni brevi (max 15 parole) per i temi principali.
-- Se non hai dati per una sezione, restituisci campi vuoti.
-
-SCHEMA JSON:
+    const letterarySystem = 'Sei un critico letterario. Rispondi SOLO in JSON.'
+    const letteraryUser = `
+Restituisci JSON con lo schema:
 {
   "analisi_tematica_filosofica": {
-    "temi_principali": [
-      { "tema": "", "spiegazione": "", "citazioni": ["", ""] }
-    ],
-    "temi_secondari": [
-      { "tema": "", "commento": "", "citazioni": [""] }
-    ],
+    "temi_principali": [{ "tema": "", "spiegazione": "", "citazioni": ["", ""] }],
+    "temi_secondari": [{ "tema": "", "commento": "", "citazioni": [""] }],
     "tesi_filosofica": ""
   },
   "analisi_stilistica_narratologica": {
-    "stile": {
-      "ritmo": "",
-      "lessico": "",
-      "sintassi": ""
-    },
-    "narratore": "",
-    "tempo_narrativo": "",
-    "dispositivi_retorici": [
-      { "nome": "", "effetto": "" }
-    ],
-    "personaggi": [
-      {
-        "nome": "",
-        "arco": "",
-        "motivazioni": "",
-        "meccanismi_di_difesa": ["", ""]
-      }
-    ]
+    "stile": {"ritmo":"", "lessico":"", "sintassi":""},
+    "narratore": "", "tempo_narrativo": "",
+    "dispositivi_retorici": [{ "nome":"", "effetto":"" }],
+    "personaggi": [{ "nome":"", "arco":"", "motivazioni":"", "meccanismi_di_difesa": ["",""] }]
   },
-  "contesto_storico_biografico": {
-    "storico": "",
-    "biografico": ""
-  },
-  "sintesi_critica_conclusione": {
-    "sintesi": "",
-    "valutazione_finale": ""
-  }
+  "contesto_storico_biografico": {"storico":"", "biografico":""},
+  "sintesi_critica_conclusione": {"sintesi":"", "valutazione_finale":""}
 }
-
-TESTO DA ANALIZZARE:
+Se una sezione non si applica, usa stringhe vuote o array vuoti.
+TESTO:
 <<<${content}>>>
-    `;
+`.trim()
 
-    // Chiamata a OpenAI - Analisi psicologica
-    const psicologico = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: psychologicalPrompt }
-      ]
-    });
+    // --- OpenAI in parallelo ---
+    const [psico, lette] = await Promise.all([
+      openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: psychologicalSystem }, { role: 'user', content: psychologicalUser }],
+      }),
+      openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: letterarySystem }, { role: 'user', content: letteraryUser }],
+      }),
+    ])
 
-    // Chiamata a OpenAI - Analisi letteraria
-    const letterario = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: literaryPrompt }
-      ]
-    });
+    let analisiPsico: any = {}
+    let analisiLett: any = {}
+    try { analisiPsico = JSON.parse(psico.choices[0].message.content || '{}') } catch {}
+    try { analisiLett  = JSON.parse(lette.choices[0].message.content || '{}') } catch {}
 
-    let analisiPsicologica = {};
-    let analisiLetteraria = {};
+    // --- Merge con stato attuale (no overwrite) ---
+    const { data: row, error: selErr } = await supabase
+      .from('poesie')
+      .select('analisi_psicologica, analisi_letteraria')
+      .eq('id', poemId)
+      .single()
 
-    try {
-      analisiPsicologica = JSON.parse(psicologico.choices[0].message.content || '{}');
-    } catch {
-      console.warn('⚠️ Analisi psicologica JSON non valido, uso oggetto vuoto');
+    if (selErr) {
+      return { statusCode: 404, body: JSON.stringify({ error: 'Poesia non trovata', details: selErr.message }) }
     }
 
-    try {
-      analisiLetteraria = JSON.parse(letterario.choices[0].message.content || '{}');
-    } catch {
-      console.warn('⚠️ Analisi letteraria JSON non valido, uso oggetto vuoto');
-    }
+    const currentPsy = ensurePsySchema(row?.analisi_psicologica || {})
+    const nextPsy = ensurePsySchema({ ...currentPsy, ...analisiPsico })
 
-    // ✅ Update su Supabase con id come stringa
+    const nextLett = { ...(row?.analisi_letteraria || {}), ...(analisiLett || {}) }
+
     const { error: dbError } = await supabase
       .from('poesie')
       .update({
-        analisi_psicologica: analisiPsicologica,
-        analisi_letteraria: analisiLetteraria
+        analisi_psicologica: nextPsy,
+        analisi_letteraria: nextLett
       })
-      .eq('id', poemId);
+      .eq('id', poemId)y/
 
     if (dbError) {
-      console.error('❌ DB update error:', dbError);
-      return { statusCode: 500, body: JSON.stringify({ error: 'DB update error', details: dbError.message }) };
+      return { statusCode: 500, body: JSON.stringify({ error: 'DB update error', details: dbError.message }) }
     }
 
-    console.log('✅ Analisi salvata per ID:', poemId);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true, id: poemId })
-    };
-
-  } catch (error: any) {
-    console.error('❌ Errore generale:', error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    return { statusCode: 200, body: JSON.stringify({ success: true, id: poemId }) }
+  } catch (e: any) {
+    console.error('forza-analisi error:', e)
+    return { statusCode: 500, body: JSON.stringify({ error: e.message }) }
   }
-};
+}
