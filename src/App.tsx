@@ -1,6 +1,7 @@
 // App.tsx (top of the file)
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+// Inizio modifica/aggiunta - aggiunto useMemo all'import
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { FaArrowLeft, FaPlay, FaPause, FaStop, FaDownload } from 'react-icons/fa';
 import './index.css'    
@@ -16,6 +17,52 @@ function isIOSorSafari() {
 }
 
 const isNonEmptyObject = (v: any) => v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0;
+
+// Inizio modifica/aggiunta - calcolo statistiche poesia
+const calculatePoetryStats = (text: string) => {
+  const sanitized = (text ?? '').trim();
+  if (!sanitized) {
+    return {
+      lineCount: 0,
+      wordCount: 0,
+      uniqueWordCount: 0,
+      characterCount: 0,
+      averageWordsPerLine: 0,
+      readingTimeSeconds: 0
+    };
+  }
+  const lineCount = sanitized.split(/\r?\n/).filter(line => line.trim().length > 0).length;
+  const wordsArray = sanitized.split(/\s+/).filter(Boolean);
+  const uniqueWordCount = new Set(wordsArray.map(word => word.toLowerCase())).size;
+  const characterCount = sanitized.replace(/\s+/g, '').length;
+  const averageWordsPerLine = lineCount > 0 ? parseFloat((wordsArray.length / lineCount).toFixed(1)) : 0;
+  const estimatedSeconds = Math.round((wordsArray.length / 180) * 60);
+  const readingTimeSeconds = wordsArray.length === 0 ? 0 : Math.max(30, estimatedSeconds);
+  return {
+    lineCount,
+    wordCount: wordsArray.length,
+    uniqueWordCount,
+    characterCount,
+    averageWordsPerLine,
+    readingTimeSeconds
+  };
+};
+
+// Inizio modifica/aggiunta - formattazione tempo di lettura
+const formatReadingTime = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 'Non stimabile';
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) {
+    return `${remainingSeconds} sec`;
+  }
+  if (remainingSeconds === 0) {
+    return `${minutes} min`;
+  }
+  return `${minutes} min ${remainingSeconds} sec`;
+};
 
 // Mostra liste di stringhe o oggetti (oggetti formattati)
 function SafeList({ items }: { items?: any[] }) {
@@ -244,6 +291,8 @@ const PoetryPage = ({ poesia, onBack }: { poesia: any; onBack: () => void }) => 
   const [showAudioPlayer, setShowAudioPlayer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(120);
   const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  // Inizio modifica/aggiunta - stato per feedback copia contenuto
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
 
   // Parse analisi (robusto)
   const parseJSON = (x: any) => {
@@ -255,22 +304,70 @@ const PoetryPage = ({ poesia, onBack }: { poesia: any; onBack: () => void }) => 
   };
   const analisiPsico = parseJSON(poesia.analisi_psicologica);
   const analisiLett = parseJSON(poesia.analisi_letteraria);
+  // Inizio modifica/aggiunta - calcolo memoizzato delle statistiche della poesia
+  const poesiaStats = useMemo(() => calculatePoetryStats(poesia.content || ''), [poesia.content]);
+
+  // Inizio modifica/aggiunta - reset stato copia dopo timeout
+  useEffect(() => {
+    if (copyStatus === 'idle') return;
+    const timeout = setTimeout(() => setCopyStatus('idle'), 2000);
+    return () => clearTimeout(timeout);
+  }, [copyStatus]);
 
   // Timer stima generazione
+  // Inizio modifica/aggiunta - gestione timer generazione audio
   useEffect(() => {
-    if (audioStatus === 'in_corso' && generationStartTime === null) {
-      const start = Date.now();
-      setGenerationStartTime(start);
+    if (audioStatus !== 'in_corso') return;
+    const start = Date.now();
+    setGenerationStartTime(start);
 
-      const timer = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - start) / 1000);
-        const remaining = Math.max(0, 120 - elapsed);
-        setTimeRemaining(remaining);
-      }, 1000);
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      const remaining = Math.max(0, 120 - elapsed);
+      setTimeRemaining(remaining);
+    }, 1000);
 
-      return () => clearInterval(timer);
+    return () => clearInterval(timer);
+  }, [audioStatus]);
+
+  // Inizio modifica/aggiunta - reset timer al termine della generazione
+  useEffect(() => {
+    if (audioStatus !== 'in_corso') {
+      setGenerationStartTime(null);
+      setTimeRemaining(120);
     }
-  }, [audioStatus, generationStartTime]);
+  }, [audioStatus]);
+
+  // Inizio modifica/aggiunta - gestione copia del contenuto della poesia
+  const handleCopyContent = useCallback(async () => {
+    const text = poesia.content || '';
+    if (!text.trim()) {
+      setCopyStatus('error');
+      return;
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!successful) throw new Error('execCommand failed');
+      } else {
+        throw new Error('Clipboard API non disponibile');
+      }
+      setCopyStatus('copied');
+    } catch (error) {
+      console.error('Copy failed:', error);
+      setCopyStatus('error');
+    }
+  }, [poesia.content]);
 
   // Se non ho audio_url, provo a generarlo una volta
   useEffect(() => {
@@ -658,6 +755,46 @@ const PoetryPage = ({ poesia, onBack }: { poesia: any; onBack: () => void }) => 
           {audioError && <div className="audio-error">{audioError}</div>}
         </div>
 
+        {/* Inizio modifica/aggiunta - sezione strumenti e statistiche della poesia */}
+        <section className="poetry-tools" aria-label="Statistiche e strumenti poesia">
+          <div className="poetry-stats-card">
+            <h2>Statistiche rapide</h2>
+            <ul className="list-disc list-inside ml-4">
+              <li><strong>Linee:</strong> {poesiaStats.lineCount}</li>
+              <li><strong>Parole:</strong> {poesiaStats.wordCount}</li>
+              <li><strong>Parole uniche:</strong> {poesiaStats.uniqueWordCount}</li>
+              <li>
+                <strong>Media parole/linea:</strong>{' '}
+                {poesiaStats.averageWordsPerLine > 0
+                  ? poesiaStats.averageWordsPerLine.toLocaleString('it-IT', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1
+                    })
+                  : '—'}
+              </li>
+              <li><strong>Caratteri:</strong> {poesiaStats.characterCount}</li>
+              <li><strong>Tempo di lettura stimato:</strong> {formatReadingTime(poesiaStats.readingTimeSeconds)}</li>
+            </ul>
+          </div>
+          <div className="poetry-actions">
+            <button
+              type="button"
+              onClick={handleCopyContent}
+              className="copy-button"
+              disabled={!poesia.content}
+            >
+              Copia testo
+            </button>
+            <p className="copy-feedback" role="status" aria-live="polite">
+              {copyStatus === 'copied'
+                ? 'Testo copiato negli appunti'
+                : copyStatus === 'error'
+                ? 'Impossibile copiare il testo'
+                : '\u00A0'}
+            </p>
+          </div>
+        </section>
+
         {/* ANALISI */}
         <div className="analysis-sections">
           {/* Psicologica dettagliata */}
@@ -733,11 +870,17 @@ const App = () => {
     setState(prev => ({ ...prev, selectedPoesia: null }));
   };
 
-  const poesieFiltrate = state.poesie.filter(p =>
-    p.title?.toLowerCase().includes(state.search.toLowerCase()) ||
-    p.author_name?.toLowerCase().includes(state.search.toLowerCase()) ||
-    p.content?.toLowerCase().includes(state.search.toLowerCase())
-  );
+  // Inizio modifica/aggiunta - memoizzazione e sanitizzazione filtro poesie
+  const poesieFiltrate = useMemo(() => {
+    const searchTerm = state.search.trim().toLowerCase();
+    if (!searchTerm) return state.poesie;
+    return state.poesie.filter(p => {
+      const fields = [p.title, p.author_name, p.content]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .map(value => value.toLowerCase());
+      return fields.some(field => field.includes(searchTerm));
+    });
+  }, [state.poesie, state.search]);
 
   return (
     <div className="app-container">
@@ -799,3 +942,4 @@ const App = () => {
 };
 
 export default App;
+
