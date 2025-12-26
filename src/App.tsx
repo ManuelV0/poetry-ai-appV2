@@ -152,9 +152,7 @@ export const handler: Handler = async (event) => {
     };
   }
 };
-```
 
-```tsx
 // App.tsx (top of the file)
 
 // Inizio modifica/aggiunta - aggiunto useMemo all'import
