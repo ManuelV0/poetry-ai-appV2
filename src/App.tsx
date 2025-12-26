@@ -4,7 +4,6 @@
 
 // Inizio modifica/aggiunta - aggiunto useMemo all'import
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { supabase } from './lib/supabaseClient';
 import { FaArrowLeft, FaPlay, FaPause, FaStop, FaDownload } from 'react-icons/fa';
 import './index.css'
 
