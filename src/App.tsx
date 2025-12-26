@@ -3,6 +3,7 @@
 // App.tsx (top of the file)
 
 // Inizio modifica/aggiunta - aggiunto useMemo all'import
+import { supabase } from './lib/supabaseClient';
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { FaArrowLeft, FaPlay, FaPause, FaStop, FaDownload } from 'react-icons/fa';
 import './index.css'
