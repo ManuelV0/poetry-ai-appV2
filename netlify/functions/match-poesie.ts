@@ -1,54 +1,25 @@
 
-// netlify/functions/match-poesie.ts
-
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing Supabase environment variables');
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false }
-});
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export const handler: Handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
+  }
+
   try {
-    // 🔒 Solo POST
-    if (event.httpMethod !== 'POST') {
-      return {
-        statusCode: 405,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Method Not Allowed' })
-      };
-    }
-
-    // 📥 Parse body
-    let body: any = {};
-    try {
-      body = event.body ? JSON.parse(event.body) : {};
-    } catch {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Body JSON non valido' })
-      };
-    }
-
-    const { poesia_id } = body;
+    const { poesia_id } = JSON.parse(event.body || '{}');
 
     if (!poesia_id) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'poesia_id mancante' })
-      };
+      return { statusCode: 400, body: 'poesia_id mancante' };
     }
 
-    // 1️⃣ Recupero embedding della poesia richiesta
+    // 1️⃣ Recupero embedding corretto
     const { data: poesia, error: poesiaErr } = await supabase
       .from('poesie')
       .select('poetic_embedding_vec')
@@ -58,47 +29,35 @@ export const handler: Handler = async (event) => {
     if (poesiaErr || !poesia?.poetic_embedding_vec) {
       return {
         statusCode: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Embedding non trovato per la poesia richiesta' })
+        body: 'Embedding non trovato per la poesia'
       };
     }
 
-    // 2️⃣ Match tramite RPC SQL (pgvector)
+    // 2️⃣ Chiamata RPC ALLINEATA
     const { data: matches, error: matchErr } = await supabase.rpc(
       'match_poesie',
       {
-        poesia_id, // ✅ QUESTO ERA IL PUNTO CHIAVE
+        poesia_id: poesia_id,
         query_embedding: poesia.poetic_embedding_vec,
         match_count: 5
       }
     );
 
     if (matchErr) {
-      console.error('RPC match_poesie error:', matchErr);
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Errore nel calcolo delle poesie consigliate' })
-      };
+      throw matchErr;
     }
 
-    // 3️⃣ Risposta finale
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matches: matches || [] })
+      body: JSON.stringify({ matches })
     };
-
   } catch (err: any) {
-    console.error('Unexpected match-poesie error:', err);
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        error: err?.message || 'Errore interno del server'
+        error: err.message || 'Errore interno'
       })
     };
   }
 };
-
-export default handler;
