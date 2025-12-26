@@ -1,6 +1,4 @@
-Ecco i file aggiornati come richiesto.
 
-```ts
 // netlify/functions/match-poesie.ts
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
@@ -1293,4 +1291,4 @@ const App = () => {
 };
 
 export default App;
-```
+
